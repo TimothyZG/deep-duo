@@ -1,0 +1,13 @@
+training:
+  batch_size: 64
+  num_epochs: 80
+  criterion: 'CrossEntropyLoss'
+  device: 'cuda'  # or 'cpu'
+  num_workers: 4
+  optimizer:
+    type: 'adamw'
+    lr: 0.0001
+    weight_decay: 0.00001
+  scheduler:
+    type: 'CosineAnnealingLR'
+    T_max: num_epochs

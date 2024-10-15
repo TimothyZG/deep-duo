@@ -1,0 +1,16 @@
+models:
+  - DenseNet_121
+  - EfficientNetV2_S
+  - EfficientNetV2_M
+  - EfficientNetV2_L
+  - MaxVit_T
+  - MNASNet1_3
+  - ResNeXt50_32X4D
+  - ResNeXt101_32X8D
+  - ShuffleNetV2X2_0
+  - SwinV2_B
+  - SwinV2_S
+  - SwinV2_T
+  - vit_b_32
+  - vit_l_32
+  - WideResNet50
