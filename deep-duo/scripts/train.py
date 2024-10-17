@@ -12,7 +12,16 @@ from trainers.logger import Logger
 from trainers.saver import Saver
 from utils.config import load_config
 
-def main():
+def train_model(config, checkpoint_dir=None):
+    # Extract hyperparameters from config
+    model_name = config['model_name']
+    dataset_name = config['dataset_name']
+    config_dir = config.get('config_dir', 'deep-duo/configs')
+    learning_rate = config['learning_rate']
+    weight_decay = config['weight_decay']
+    batch_size = config.get('batch_size', 64)
+    num_epochs = config.get('num_epochs', 1)
+    num_workers = config.get('num_workers', 4)
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Training script')
     parser.add_argument('--model_name', type=str, required=True, help='Name of the model to train')
