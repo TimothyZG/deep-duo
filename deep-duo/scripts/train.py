@@ -12,7 +12,7 @@ from trainers.logger import Logger
 from trainers.saver import Saver
 from utils.config import load_config
 
-def train_model(config, checkpoint_dir=None):
+def main(config, checkpoint_dir=None):
     # Extract hyperparameters from config
     model_name = config['model_name']
     dataset_name = config['dataset_name']
