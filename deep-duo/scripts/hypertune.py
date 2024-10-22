@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import ray
+from ray.air import session
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
@@ -137,6 +138,8 @@ def main():
     # Device configuration
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    ray.init()
+    
     # Define the hyperparameter search space
     config = {
         'model_name': model_name,
@@ -149,8 +152,10 @@ def main():
 
     scheduler = ASHAScheduler(
         max_t=num_epochs,
-        grace_period=1,
-        reduction_factor=2
+        grace_period=2,
+        reduction_factor=2,
+        metric='validation_f1',
+        mode='max'
     )
 
     reporter = CLIReporter(
