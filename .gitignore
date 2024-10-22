@@ -3,3 +3,5 @@ wandb
 logs
 Data
 iwildcam
+*.pyc
+ray_results/

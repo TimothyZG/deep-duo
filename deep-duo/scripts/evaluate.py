@@ -3,7 +3,7 @@ import os
 import torch
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from models.model_factory import create_model
+from mf.model_factory import create_model
 from data.dataloader import get_dataloaders
 from trainers.evaluator import evaluate_model
 from trainers.logger import Logger

@@ -4,10 +4,10 @@
 #SBATCH --gres=gpu:4               # Request 1 GPUs
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16         # Number of CPU cores per task
-#SBATCH --time=24:00:00            # 24 hours
+#SBATCH --time=4:00:00            # 24 hours
 #SBATCH --mail-user=<tiange.zhou@outlook.com>
 #SBATCH --mail-type=ALL
-#SBATCH --output=logs/train_and_evaluate-maxvit_t-%j.out
+#SBATCH --output=logs/train_and_evaluate-%j.out
 
 module load python/3.10
 module load scipy-stack/2023b

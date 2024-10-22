@@ -12,16 +12,20 @@ from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
 from sklearn.metrics import f1_score
-
-# Add the project directory to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from models.model_factory import create_model
-from data.dataloader import get_dataloaders
 from utils.config import load_config
+from mf.model_factory import create_model
 
 def train_model(config, num_classes, root_dir, dataset_name, device):
-    # Unpack hyperparameters
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from mf.model_factory import create_model
+    from data.transforms import get_transforms
+    from data.dataloader import get_dataloaders
+    from ray.air import session, Checkpoint
+    import tempfile
+
     learning_rate = config['learning_rate']
     weight_decay = config['weight_decay']
     batch_size = config['batch_size']
@@ -33,7 +37,6 @@ def train_model(config, num_classes, root_dir, dataset_name, device):
     model = model.to(device)
 
     # Get data transforms
-    from data.transforms import get_transforms
     transforms = get_transforms(dataset_name)
 
     # Prepare data loaders
@@ -56,7 +59,7 @@ def train_model(config, num_classes, root_dir, dataset_name, device):
         # Training phase
         model.train()
         for batch in data_loaders['train']:
-            inputs, labels = batch
+            inputs, labels, metadata = batch
             inputs, labels = inputs.to(device), labels.to(device)
 
             optimizer.zero_grad()
@@ -71,7 +74,7 @@ def train_model(config, num_classes, root_dir, dataset_name, device):
         all_labels = []
         with torch.no_grad():
             for batch in data_loaders['val']:
-                inputs, labels = batch
+                inputs, labels, metadata = batch
                 inputs, labels = inputs.to(device), labels.to(device)
                 outputs = model(inputs)
                 _, predicted = torch.max(outputs.data, 1)
@@ -81,18 +84,20 @@ def train_model(config, num_classes, root_dir, dataset_name, device):
         # Compute macro F1 score
         validation_f1 = f1_score(all_labels, all_preds, average='macro')
 
-        # Report metrics to Ray Tune
-        tune.report(validation_f1=validation_f1)
-
         # Save checkpoint if this is the best model so far
         if validation_f1 > best_validation_f1:
             best_validation_f1 = validation_f1
-            with tune.checkpoint_dir(epoch) as checkpoint_dir:
-                path = os.path.join(checkpoint_dir, "checkpoint.pt")
-                torch.save({
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                }, path)
+            tmpdir = tempfile.mkdtemp()
+            path = os.path.join(tmpdir, "checkpoint.pt")
+            torch.save({
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+            }, path)
+
+            checkpoint = Checkpoint.from_directory(tmpdir)
+            session.report({"validation_f1": validation_f1}, checkpoint=checkpoint)
+        else:
+            session.report({"validation_f1": validation_f1})
 
         # Update scheduler
         scheduler.step()
@@ -138,7 +143,9 @@ def main():
     # Device configuration
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    ray.init()
+    ray.init(
+        runtime_env={"working_dir": os.path.dirname(os.path.dirname(os.path.abspath(__file__)))}
+    )
     
     # Define the hyperparameter search space
     config = {
@@ -176,19 +183,21 @@ def main():
         num_samples=12,
         scheduler=scheduler,
         progress_reporter=reporter,
-        local_dir='ray_results',
-        checkpoint_at_end=True
+        local_dir='ray_results'
     )
 
     best_trial = result.get_best_trial('validation_f1', 'max', 'last')
     print(f"Best trial config: {best_trial.config}")
-    print(f"Best trial final validation accuracy: {best_trial.last_result['validation_accuracy']}")
-
-    # Load the best model checkpoint
-    best_checkpoint_dir = best_trial.checkpoint.value
-    model_state = torch.load(os.path.join(best_checkpoint_dir, "checkpoint.pt"))['model_state_dict']
+    print(f"Best trial final validation accuracy: {best_trial.last_result['validation_f1']}")
 
     # Recreate the model and load state
+    best_checkpoint = best_trial.checkpoint
+    # Access the checkpoint directory
+    with best_checkpoint.as_directory() as checkpoint_dir:
+        checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pt")
+        checkpoint_data = torch.load(checkpoint_path)
+        model_state = checkpoint_data['model_state_dict']
+    
     best_model = create_model(model_name=best_trial.config['model_name'], num_classes=num_classes)
     best_model.load_state_dict(model_state)
     best_model.to(device)
