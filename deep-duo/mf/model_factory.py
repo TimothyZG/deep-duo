@@ -103,13 +103,36 @@ def create_model(model_name, num_classes):
         num_features = model.heads.head.in_features
         model.heads.head = nn.Linear(num_features, num_classes)
 
-    elif model_name == 'wideresnet50':
-        from torchvision.models import Wide_ResNet50_2_Weights
-        weights = Wide_ResNet50_2_Weights.IMAGENET1K_V2  # V2 weights available
-        model = models.wide_resnet50_2(weights=weights)
+    elif model_name == 'wideresnet101':
+        from torchvision.models import Wide_ResNet101_2_Weights
+        weights = Wide_ResNet101_2_Weights.IMAGENET1K_V2  # V2 weights available
+        model = models.wide_resnet101_2(weights=weights)
         num_features = model.fc.in_features
         model.fc = nn.Linear(num_features, num_classes)
 
+    # Added ResNet50
+    elif model_name == 'resnet50':
+        from torchvision.models import ResNet50_Weights
+        weights = ResNet50_Weights.IMAGENET1K_V2
+        model = models.resnet50(weights=weights)
+        num_features = model.fc.in_features
+        model.fc = nn.Linear(num_features, num_classes)
+
+    # Added ResNet18
+    elif model_name == 'resnet18':
+        from torchvision.models import ResNet18_Weights
+        weights = ResNet18_Weights.IMAGENET1K_V1
+        model = models.resnet18(weights=weights)
+        num_features = model.fc.in_features
+        model.fc = nn.Linear(num_features, num_classes)
+
+    # Added ViT_L_16
+    elif model_name == 'vit_l_16':
+        from torchvision.models import ViT_L_16_Weights
+        weights = ViT_L_16_Weights.IMAGENET1K_V1
+        model = models.vit_l_16(weights=weights)
+        num_features = model.heads.head.in_features
+        model.heads.head = nn.Linear(num_features, num_classes)
     else:
         raise ValueError(f"Model '{model_name}' is not supported.")
 

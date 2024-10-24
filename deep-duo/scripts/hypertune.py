@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import ray
-from ray.air import session
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
@@ -52,7 +51,9 @@ def train_model(config, num_classes, root_dir, dataset_name, device):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
-
+    trial_id = session.get_trial_id()
+    checkpoint_dir = os.path.join(os.getcwd(), f"checkpoint_{trial_id}")
+    os.makedirs(checkpoint_dir, exist_ok=True)
     # Training loop
     best_validation_f1 = 0.0
     for epoch in range(num_epochs):
@@ -83,21 +84,21 @@ def train_model(config, num_classes, root_dir, dataset_name, device):
 
         # Compute macro F1 score
         validation_f1 = f1_score(all_labels, all_preds, average='macro')
-
+        metrics = {"validation_f1": validation_f1}
         # Save checkpoint if this is the best model so far
         if validation_f1 > best_validation_f1:
             best_validation_f1 = validation_f1
-            tmpdir = tempfile.mkdtemp()
-            path = os.path.join(tmpdir, "checkpoint.pt")
+            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pt")
             torch.save({
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-            }, path)
+            }, checkpoint_path)
 
-            checkpoint = Checkpoint.from_directory(tmpdir)
-            session.report({"validation_f1": validation_f1}, checkpoint=checkpoint)
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            session.report(metrics, checkpoint=checkpoint)
+            
         else:
-            session.report({"validation_f1": validation_f1})
+            session.report(metrics)
 
         # Update scheduler
         scheduler.step()
@@ -119,12 +120,10 @@ def main():
     dataset_config = load_config(dataset_config_path)
     training_config = load_config(training_config_path)
 
-    # Check if model is in model_config
     model_name = args.model_name
     if model_name.lower() not in [m.lower() for m in model_config['models']]:
         raise ValueError(f"Model '{model_name}' not found in model_config.yaml")
 
-    # Get dataset-specific configurations
     dataset_name = args.dataset_name
     dataset_params = next(
         (item for item in dataset_config['datasets'] if item['name'].lower() == dataset_name.lower()), None)
@@ -144,10 +143,10 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     ray.init(
-        runtime_env={"working_dir": os.path.dirname(os.path.dirname(os.path.abspath(__file__)))}
+        runtime_env={"working_dir": os.path.dirname(os.path.dirname(os.path.abspath(__file__)))},
+        log_to_driver=False
     )
     
-    # Define the hyperparameter search space
     config = {
         'model_name': model_name,
         'learning_rate': tune.loguniform(1e-5, 1e-3),
@@ -180,18 +179,23 @@ def main():
         ),
         resources_per_trial={'cpu': num_workers, 'gpu': 1 if torch.cuda.is_available() else 0},
         config=config,
-        num_samples=12,
+        num_samples=16,
         scheduler=scheduler,
         progress_reporter=reporter,
-        local_dir='ray_results'
+        local_dir='ray_results',
+        keep_checkpoints_num=1
     )
 
     best_trial = result.get_best_trial('validation_f1', 'max', 'last')
     print(f"Best trial config: {best_trial.config}")
-    print(f"Best trial final validation accuracy: {best_trial.last_result['validation_f1']}")
-
-    # Recreate the model and load state
-    best_checkpoint = best_trial.checkpoint
+    print(f"Best trial final validation f1: {best_trial.last_result['validation_f1']}")
+    
+    best_checkpoint = result.get_best_checkpoint(
+        trial=best_trial,
+        metric='validation_f1',
+        mode='max'
+    )
+    
     # Access the checkpoint directory
     with best_checkpoint.as_directory() as checkpoint_dir:
         checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pt")

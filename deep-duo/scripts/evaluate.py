@@ -115,8 +115,8 @@ def main():
     })
 
     # Print results
-    print(f"In-Distribution Test Loss: {test_loss_ind:.4f}, Test Metric: {test_metric_ind:.4f}")
-    print(f"Out-of-Distribution Test Loss: {test_loss_ood:.4f}, Test Metric: {test_metric_ood:.4f}")
+    print(f"InD Test Loss: {test_loss_ind:.4f}, InD Test F1: {test_metric_ind:.4f}")
+    print(f"OOD Test Loss: {test_loss_ood:.4f}, OOD Test F1: {test_metric_ood:.4f}")
 
     # Finish logging
     logger.finish()

@@ -1,5 +1,5 @@
 training:
-  batch_size: 16 #16
+  batch_size: 16
   num_epochs: 12
   criterion: 'CrossEntropyLoss'
   device: 'cuda'
