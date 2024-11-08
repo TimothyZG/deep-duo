@@ -179,7 +179,7 @@ def main():
         ),
         resources_per_trial={'cpu': num_workers, 'gpu': 1 if torch.cuda.is_available() else 0},
         config=config,
-        num_samples=16,
+        num_samples=8,
         scheduler=scheduler,
         progress_reporter=reporter,
         local_dir='ray_results',

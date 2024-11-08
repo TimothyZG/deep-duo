@@ -18,7 +18,7 @@ export DATA_DIR=$SLURM_TMPDIR/data/iwildcam_v2.0
 mkdir -p $DATA_DIR
 tar xf Data/iwildcam_v2.0.tar -C $DATA_DIR --strip-components=1
 
-MODEL_NAME=resnet18
+MODEL_NAME=densenet_121
 
 # Train the model
 python deep-duo/scripts/hypertune.py \

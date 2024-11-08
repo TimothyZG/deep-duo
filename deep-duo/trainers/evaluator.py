@@ -24,8 +24,9 @@ def evaluate_model(model, dataloader, criterion, device, dataset_name, model_nam
     all_logits = []
 
     # Create directory for saving results if it doesn't exist
-    folder_path = f"./{dataset_name}"
-    os.makedirs(folder_path, exist_ok=True)
+    pred_folder_path = f"./{dataset_name}"
+    target_folder_path = f"./{dataset_name}-target"
+    os.makedirs(pred_folder_path, exist_ok=True)
 
     with torch.no_grad():
         for batch in tqdm(dataloader):
@@ -56,13 +57,17 @@ def evaluate_model(model, dataloader, criterion, device, dataset_name, model_nam
 
     # Convert logits (n samples x k classes) and targets (n samples) to DataFrames
     logits_df = pd.DataFrame(all_logits)  # Each row is a sample, each column is a class logit
-    targets_df = pd.DataFrame(all_labels, columns=['targets'])  # Targets in a separate DataFrame
 
     # Save logits and targets to separate CSV files with 'ind' or 'ood' in the file name
-    logits_csv_file_path = os.path.join(folder_path, f"{model_name}_{eval_type}_logits.csv")
-    targets_csv_file_path = os.path.join(folder_path, f"{model_name}_{eval_type}_targets.csv")
+    logits_csv_file_path = os.path.join(pred_folder_path, f"{model_name}_{eval_type}_logits.csv")
+    targets_csv_file_path = os.path.join(target_folder_path, f"{eval_type}_targets.csv")
 
     logits_df.to_csv(logits_csv_file_path, index=False)
-    targets_df.to_csv(targets_csv_file_path, index=False)
+    
+    if os.path.exists(targets_csv_file_path):
+        print("Target Files already exists.")
+    else:
+        targets_df = pd.DataFrame(all_labels, columns=['targets'])  # Targets in a separate DataFrame
+        targets_df.to_csv(targets_csv_file_path, index=False)
 
     return total_loss, total_metric
