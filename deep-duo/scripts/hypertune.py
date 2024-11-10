@@ -15,15 +15,15 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.config import load_config
 from mf.model_factory import create_model
 
-def train_model(config, num_classes, root_dir, dataset_name, device):
+def train_model(config, num_classes, root_dir, dataset_name, device, model_state=None, finetune=False):
     import sys
     import os
+    import ray
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from mf.model_factory import create_model
     from data.transforms import get_transforms
     from data.dataloader import get_dataloaders
     from ray.air import session, Checkpoint
-    import tempfile
 
     learning_rate = config['learning_rate']
     weight_decay = config['weight_decay']
@@ -33,6 +33,18 @@ def train_model(config, num_classes, root_dir, dataset_name, device):
 
     # Create model
     model = create_model(model_name=config['model_name'], num_classes=num_classes)
+    
+    if model_state:
+        print("Using the model_state pass in as starting point")
+        model.load_state_dict(model_state)
+        
+    if finetune:
+        print("Fully Finetune Phase:")
+        for param in model.parameters():
+            param.requires_grad = True
+    else:
+        print("Linear Probing Phase:")
+        
     model = model.to(device)
 
     # Get data transforms
@@ -136,7 +148,7 @@ def main():
     # Access training-specific configurations
     training_params = training_config.get('training', {})
     batch_size = training_params.get('batch_size', 64)
-    num_epochs = training_params.get('num_epochs', 1)
+    num_epochs_lp = training_params.get('num_epochs_lp', 1)
     num_workers = training_params.get('num_workers', 4)
 
     # Device configuration
@@ -147,17 +159,17 @@ def main():
         log_to_driver=False
     )
     
-    config = {
+    config_lp = {
         'model_name': model_name,
-        'learning_rate': tune.loguniform(1e-5, 1e-3),
+        'learning_rate': tune.loguniform(1e-4, 1e-2),
         'weight_decay': tune.loguniform(1e-6, 1e-4),
         'batch_size': batch_size,
-        'num_epochs': num_epochs,
+        'num_epochs': num_epochs_lp,
         'num_workers': num_workers,
     }
 
     scheduler = ASHAScheduler(
-        max_t=num_epochs,
+        max_t=num_epochs_lp,
         grace_period=2,
         reduction_factor=2,
         metric='validation_f1',
@@ -166,7 +178,8 @@ def main():
 
     reporter = CLIReporter(
         parameter_columns=['learning_rate', 'weight_decay'],
-        metric_columns=['validation_f1', 'training_iteration']
+        metric_columns=['validation_f1', 'training_iteration'],
+        max_report_frequency=600
     )
 
     result = tune.run(
@@ -178,11 +191,11 @@ def main():
             device=device
         ),
         resources_per_trial={'cpu': num_workers, 'gpu': 1 if torch.cuda.is_available() else 0},
-        config=config,
-        num_samples=8,
+        config=config_lp,
+        num_samples=4,
         scheduler=scheduler,
         progress_reporter=reporter,
-        local_dir='ray_results',
+        storage_path='ray_results',
         keep_checkpoints_num=1
     )
 
@@ -208,9 +221,70 @@ def main():
 
     # Save the best model
     os.makedirs('checkpoints', exist_ok=True)
-    model_save_path = f'checkpoints/best_model_{model_name}_{dataset_name}.pth'
+    model_save_path = f'checkpoints/best_lp_model_{model_name}_{dataset_name}.pth'
     torch.save(best_model.state_dict(), model_save_path)
-    print(f"Best model saved to '{model_save_path}'")
+    print(f"Best lp model saved to '{model_save_path}'")
+    
+    # Fully Finetune Phase
+    ###########===============################
+    
+    finetune_config = {
+        'model_name': model_name,
+        'learning_rate': tune.loguniform(1e-6, 1e-4),
+        'weight_decay': tune.loguniform(1e-6, 1e-4),
+        'batch_size': batch_size,
+        'num_epochs': training_params.get('num_epochs_ff', 1),
+        'num_workers': num_workers,
+    }
+    finetune_scheduler = ASHAScheduler(
+        max_t=finetune_config['num_epochs'],
+        grace_period=2,
+        reduction_factor=2,
+        metric='validation_f1',
+        mode='max'
+    )
+    finetune_result = tune.run(
+        tune.with_parameters(
+            train_model,
+            num_classes=num_classes,
+            root_dir=root_dir,
+            dataset_name=dataset_name,
+            device=device,
+            model_state=model_state,
+            finetune=True
+        ),
+        resources_per_trial={'cpu': num_workers, 'gpu': 1 if torch.cuda.is_available() else 0},
+        config=finetune_config,
+        num_samples=8,
+        scheduler=finetune_scheduler,
+        progress_reporter=reporter,
+        storage_path='ray_results',
+        keep_checkpoints_num=1
+    )
+    best_finetune_trial = finetune_result.get_best_trial('validation_f1', 'max', 'last')
+    print(f"Best finetune trial config: {best_finetune_trial.config}")
+    print(f"Best finetune trial final validation f1: {best_finetune_trial.last_result['validation_f1']}")
+
+    best_finetune_checkpoint = finetune_result.get_best_checkpoint(
+        trial=best_finetune_trial,
+        metric='validation_f1',
+        mode='max'
+    )
+    
+    with best_finetune_checkpoint.as_directory() as checkpoint_dir:
+        checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pt")
+        checkpoint_data = torch.load(checkpoint_path)
+        model_state = checkpoint_data['model_state_dict']
+
+    best_finetune_model = create_model(model_name=best_finetune_trial.config['model_name'], num_classes=num_classes)
+    best_finetune_model.load_state_dict(model_state)
+    best_finetune_model.to(device)
+
+    # Save the best finetuned model
+    finetune_model_save_path = f'checkpoints/best_ff_model_{model_name}_{dataset_name}.pth'
+    torch.save(best_finetune_model.state_dict(), finetune_model_save_path)
+    print(f"Best finetuned model saved to '{finetune_model_save_path}'")
+
 
 if __name__ == '__main__':
     main()

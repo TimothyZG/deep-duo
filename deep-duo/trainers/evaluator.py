@@ -29,7 +29,7 @@ def evaluate_model(model, dataloader, criterion, device, dataset_name, model_nam
     os.makedirs(pred_folder_path, exist_ok=True)
 
     with torch.no_grad():
-        for batch in tqdm(dataloader):
+        for batch in tqdm(dataloader, mininterval=6.0):
             data, targets, metadata = batch
             data = data.to(device)
             targets = targets.to(device)
