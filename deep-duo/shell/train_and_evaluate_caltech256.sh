@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --mem=64000M
 #SBATCH --nodes=1
-#SBATCH --gres=gpu:4               # Request 1 GPUs
+#SBATCH --gres=gpu:4
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=16         # Number of CPU cores per task
-#SBATCH --time=24:00:00            # 24 hours
+#SBATCH --cpus-per-task=16
+#SBATCH --time=24:00:00
 #SBATCH --mail-user=<tiange.zhou@outlook.com>
 #SBATCH --mail-type=ALL
 #SBATCH --output=logs/train_and_evaluate-%j.out
@@ -14,12 +14,11 @@ module load scipy-stack/2023b
 source ~/mlenv/bin/activate
 
 # Prepare data
-export DATA_DIR=$SLURM_TMPDIR/data/iwildcam_v2.0
+export DATA_DIR=$SLURM_TMPDIR/data/caltech256
 mkdir -p $DATA_DIR
-tar xf Data/iwildcam_v2.0.tar -C $DATA_DIR --strip-components=1
 
 MODEL_NAME=vit_l_16
-DATASET_NAME=iwildcam
+DATASET_NAME=caltech256
 
 # Train the model
 python deep-duo/scripts/hypertune.py \

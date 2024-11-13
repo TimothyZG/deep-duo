@@ -30,7 +30,10 @@ def evaluate_model(model, dataloader, criterion, device, dataset_name, model_nam
 
     with torch.no_grad():
         for batch in tqdm(dataloader, mininterval=6.0):
-            data, targets, metadata = batch
+            if dataset_name=="iwildcam":
+                data, targets, metadata = batch
+            else:
+                data, targets = batch
             data = data.to(device)
             targets = targets.to(device)
 

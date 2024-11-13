@@ -7,3 +7,7 @@ datasets:
     tar_path: Data/iwildcam_v2.0.tar
     root_dir: "${SLURM_TMPDIR}/data/iwildcam_v2.0"
     num_classes: 182
+  - name: caltech256
+    # tar_path: Data/iwildcam_v2.0.tar
+    root_dir: "${SLURM_TMPDIR}/data/caltech256"
+    num_classes: 257

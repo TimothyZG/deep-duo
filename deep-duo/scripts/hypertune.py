@@ -10,7 +10,7 @@ import ray
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, accuracy_score
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.config import load_config
 from mf.model_factory import create_model
@@ -72,7 +72,10 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
         # Training phase
         model.train()
         for batch in data_loaders['train']:
-            inputs, labels, metadata = batch
+            if dataset_name=="iwildcam":
+                inputs, labels, metadata = batch
+            else:
+                inputs, labels = batch
             inputs, labels = inputs.to(device), labels.to(device)
 
             optimizer.zero_grad()
@@ -87,7 +90,10 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
         all_labels = []
         with torch.no_grad():
             for batch in data_loaders['val']:
-                inputs, labels, metadata = batch
+                if dataset_name=="iwildcam":
+                    inputs, labels, metadata = batch
+                else:
+                    inputs, labels = batch
                 inputs, labels = inputs.to(device), labels.to(device)
                 outputs = model(inputs)
                 _, predicted = torch.max(outputs.data, 1)
@@ -96,7 +102,12 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
 
         # Compute macro F1 score
         validation_f1 = f1_score(all_labels, all_preds, average='macro')
-        metrics = {"validation_f1": validation_f1}
+        validation_accuracy = accuracy_score(all_labels, all_preds)
+        metrics = {
+            "validation_f1": validation_f1,
+            "validation_accuracy": validation_accuracy
+        }
+
         # Save checkpoint if this is the best model so far
         if validation_f1 > best_validation_f1:
             best_validation_f1 = validation_f1
@@ -195,7 +206,7 @@ def main():
         num_samples=4,
         scheduler=scheduler,
         progress_reporter=reporter,
-        storage_path='ray_results',
+        local_dir='ray_results',
         keep_checkpoints_num=1
     )
 
@@ -203,11 +214,18 @@ def main():
     print(f"Best trial config: {best_trial.config}")
     print(f"Best trial final validation f1: {best_trial.last_result['validation_f1']}")
     
-    best_checkpoint = result.get_best_checkpoint(
-        trial=best_trial,
-        metric='validation_f1',
-        mode='max'
-    )
+    if dataset_name=="iwildcam":
+        best_checkpoint = result.get_best_checkpoint(
+            trial=best_trial,
+            metric='validation_f1',
+            mode='max'
+        )
+    else:
+        best_checkpoint = result.get_best_checkpoint(
+            trial=best_trial,
+            metric='validation_accuracy',
+            mode='max'
+        )
     
     # Access the checkpoint directory
     with best_checkpoint.as_directory() as checkpoint_dir:
@@ -255,21 +273,28 @@ def main():
         ),
         resources_per_trial={'cpu': num_workers, 'gpu': 1 if torch.cuda.is_available() else 0},
         config=finetune_config,
-        num_samples=8,
+        num_samples=4,
         scheduler=finetune_scheduler,
         progress_reporter=reporter,
-        storage_path='ray_results',
+        local_dir='ray_results',
         keep_checkpoints_num=1
     )
     best_finetune_trial = finetune_result.get_best_trial('validation_f1', 'max', 'last')
     print(f"Best finetune trial config: {best_finetune_trial.config}")
     print(f"Best finetune trial final validation f1: {best_finetune_trial.last_result['validation_f1']}")
 
-    best_finetune_checkpoint = finetune_result.get_best_checkpoint(
-        trial=best_finetune_trial,
-        metric='validation_f1',
-        mode='max'
-    )
+    if dataset_name=="iwildcam":
+        best_finetune_checkpoint = finetune_result.get_best_checkpoint(
+            trial=best_finetune_trial,
+            metric='validation_f1',
+            mode='max'
+        )
+    else:
+        best_finetune_checkpoint = finetune_result.get_best_checkpoint(
+            trial=best_finetune_trial,
+            metric='validation_accuracy',
+            mode='max'
+        )
     
     with best_finetune_checkpoint.as_directory() as checkpoint_dir:
         checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pt")
