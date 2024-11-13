@@ -67,7 +67,7 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
     checkpoint_dir = os.path.join(os.getcwd(), f"checkpoint_{trial_id}")
     os.makedirs(checkpoint_dir, exist_ok=True)
     # Training loop
-    best_validation_f1 = 0.0
+    best_validation_metric = 0.0
     for epoch in range(num_epochs):
         # Training phase
         model.train()
@@ -107,10 +107,10 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
             "validation_f1": validation_f1,
             "validation_accuracy": validation_accuracy
         }
-
+        validation_metric = validation_f1 if dataset_name=="iwildcam" else validation_accuracy
         # Save checkpoint if this is the best model so far
-        if validation_f1 > best_validation_f1:
-            best_validation_f1 = validation_f1
+        if validation_metric > best_validation_metric:
+            best_validation_metric = validation_metric
             checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pt")
             torch.save({
                 'model_state_dict': model.state_dict(),
@@ -153,6 +153,7 @@ def main():
     if not dataset_params:
         raise ValueError(f"Dataset '{dataset_name}' not found in dataset_config.yaml")
 
+    validation_metric = "validation_f1" if dataset_name=="iwildcam" else "validation_accuracy"
     num_classes = dataset_params['num_classes']
     root_dir = os.path.expandvars(dataset_params['root_dir'])
 
@@ -183,13 +184,13 @@ def main():
         max_t=num_epochs_lp,
         grace_period=2,
         reduction_factor=2,
-        metric='validation_f1',
+        metric=validation_metric,
         mode='max'
     )
 
     reporter = CLIReporter(
         parameter_columns=['learning_rate', 'weight_decay'],
-        metric_columns=['validation_f1', 'training_iteration'],
+        metric_columns=[validation_metric, 'training_iteration'],
         max_report_frequency=600
     )
 
@@ -210,22 +211,16 @@ def main():
         keep_checkpoints_num=1
     )
 
-    best_trial = result.get_best_trial('validation_f1', 'max', 'last')
+    best_trial = result.get_best_trial(validation_metric, 'max', 'last')
     print(f"Best trial config: {best_trial.config}")
-    print(f"Best trial final validation f1: {best_trial.last_result['validation_f1']}")
+    print(f"Best trial final validation metric: {best_trial.last_result[validation_metric]}")
     
-    if dataset_name=="iwildcam":
-        best_checkpoint = result.get_best_checkpoint(
-            trial=best_trial,
-            metric='validation_f1',
-            mode='max'
-        )
-    else:
-        best_checkpoint = result.get_best_checkpoint(
-            trial=best_trial,
-            metric='validation_accuracy',
-            mode='max'
-        )
+
+    best_checkpoint = result.get_best_checkpoint(
+        trial=best_trial,
+        metric=validation_metric,
+        mode='max'
+    )
     
     # Access the checkpoint directory
     with best_checkpoint.as_directory() as checkpoint_dir:
@@ -258,7 +253,7 @@ def main():
         max_t=finetune_config['num_epochs'],
         grace_period=2,
         reduction_factor=2,
-        metric='validation_f1',
+        metric=validation_metric,
         mode='max'
     )
     finetune_result = tune.run(
@@ -279,22 +274,16 @@ def main():
         local_dir='ray_results',
         keep_checkpoints_num=1
     )
-    best_finetune_trial = finetune_result.get_best_trial('validation_f1', 'max', 'last')
+    best_finetune_trial = finetune_result.get_best_trial(validation_metric, 'max', 'last')
     print(f"Best finetune trial config: {best_finetune_trial.config}")
-    print(f"Best finetune trial final validation f1: {best_finetune_trial.last_result['validation_f1']}")
+    print(f"Best finetune trial final validation metric: {best_finetune_trial.last_result[validation_metric]}")
 
-    if dataset_name=="iwildcam":
-        best_finetune_checkpoint = finetune_result.get_best_checkpoint(
-            trial=best_finetune_trial,
-            metric='validation_f1',
-            mode='max'
-        )
-    else:
-        best_finetune_checkpoint = finetune_result.get_best_checkpoint(
-            trial=best_finetune_trial,
-            metric='validation_accuracy',
-            mode='max'
-        )
+    best_finetune_checkpoint = finetune_result.get_best_checkpoint(
+        trial=best_finetune_trial,
+        metric=validation_metric,
+        mode='max'
+    )
+
     
     with best_finetune_checkpoint.as_directory() as checkpoint_dir:
         checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pt")
