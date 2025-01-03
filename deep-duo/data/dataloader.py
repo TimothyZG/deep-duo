@@ -27,7 +27,13 @@ def get_dataloaders(dataset_name, root_dir, batch_size, num_workers, transforms,
 
 
 def get_caltech256_dataloaders(root_dir, batch_size, num_workers, resize=224):
-    # Define the transformation pipeline
+    import os
+    print(f"{root_dir=}")
+    print("Files in root_dir:")
+    print(os.listdir(root_dir))
+
+    print("\nFiles in parent_dir:")
+    print(os.listdir(os.path.dirname(root_dir)))
     transform_pipeline = T.Compose([
         T.Lambda(lambda img: img.convert("RGB")),  # Ensure image is in RGB mode
         T.Resize((resize, resize)),
@@ -36,7 +42,7 @@ def get_caltech256_dataloaders(root_dir, batch_size, num_workers, resize=224):
     ])
     
     # Load the entire Caltech256 dataset
-    dataset = Caltech256(root=root_dir, transform=transform_pipeline, download=True)
+    dataset = Caltech256(root=root_dir, transform=transform_pipeline, download=False)
     
     # Define dataset sizes for train, val, and test (e.g., 70% train, 15% val, 15% test)
     train_size = int(0.7 * len(dataset))
@@ -44,7 +50,9 @@ def get_caltech256_dataloaders(root_dir, batch_size, num_workers, resize=224):
     test_size = len(dataset) - train_size - val_size
     
     # Split the dataset
-    train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
+    seed = 42
+    generator = torch.Generator().manual_seed(seed)
+    train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size], generator=generator)
     
     # Create DataLoaders for each split
     data_loaders = {
@@ -63,3 +71,43 @@ def collate_fn(batch):
         'pixel_values': pixel_values,
         'labels': labels
     }
+    
+    
+# def get_caltech256_dataloaders(root_dir, batch_size, num_workers, resize=224, seed=42):
+# # Set the seed for reproducibility
+# torch.manual_seed(seed)
+
+# print(f"{root_dir=}")
+# print("Files in root_dir:")
+# print(os.listdir(root_dir))
+
+# print("\nFiles in parent_dir:")
+# print(os.listdir(os.path.dirname(root_dir)))
+
+# # Transformation pipeline
+# transform_pipeline = T.Compose([
+#     T.Lambda(lambda img: img.convert("RGB")),  # Ensure image is in RGB mode
+#     T.Resize((resize, resize)),
+#     T.ToTensor(),
+#     T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet mean and std
+# ])
+
+# # Load dataset using ImageFolder, which expects a root directory with subdirectories for each class
+# dataset = datasets.ImageFolder(root=root_dir, transform=transform_pipeline)
+
+# # Define dataset sizes for train, val, and test (e.g., 70% train, 15% val, 15% test)
+# train_size = int(0.7 * len(dataset))
+# val_size = int(0.15 * len(dataset))
+# test_size = len(dataset) - train_size - val_size
+
+# # Split the dataset
+# train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
+
+# # Create DataLoaders for each split
+# data_loaders = {
+#     "train": DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True),
+#     "val": DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False),
+#     "test": DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False)
+# }
+
+# return data_loaders

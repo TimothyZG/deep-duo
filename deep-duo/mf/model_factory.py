@@ -52,8 +52,16 @@ def create_model(model_name, num_classes, freeze_layers=True):
         if freeze_layers:
             for param in model.parameters():
                 param.requires_grad = False
-        num_features = model.classifier.in_features
-        model.classifier = nn.Linear(num_features, num_classes)
+        num_features = model.block_channels[-1]  # Last block channels
+        # Replace the classification head
+        model.classifier = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),  # Global Pooling
+            nn.Flatten(),            # Flatten into a vector
+            nn.LayerNorm(num_features),  # LayerNorm for stability
+            nn.Linear(num_features, num_features),  # Fully Connected Layer
+            nn.Tanh(),               # Non-linearity
+            nn.Linear(num_features, num_classes),  # Output Layer
+        )
 
     elif model_name == 'mnasnet1_3':
         from torchvision.models import MNASNet1_3_Weights
@@ -62,8 +70,11 @@ def create_model(model_name, num_classes, freeze_layers=True):
         if freeze_layers:
             for param in model.parameters():
                 param.requires_grad = False
-        num_features = model.classifier.in_features
-        model.classifier = nn.Linear(num_features, num_classes)
+        num_features = model.classifier.in_features # Error
+        model.classifier = nn.Sequential(
+            nn.Dropout(p=0.2),  # Keep the dropout layer
+            nn.Linear(in_features=model.classifier[-1].in_features, out_features=num_classes)
+        )
 
     elif model_name == 'resnext50_32x4d':
         from torchvision.models import ResNeXt50_32X4D_Weights
@@ -75,7 +86,7 @@ def create_model(model_name, num_classes, freeze_layers=True):
         num_features = model.fc.in_features
         model.fc = nn.Linear(num_features, num_classes)
 
-    elif model_name == 'resnext101_32x8d':
+    elif model_name == 'resnext101_32x8d': # Cuda Out Of Memory Error
         from torchvision.models import ResNeXt101_32X8D_Weights
         weights = ResNeXt101_32X8D_Weights.IMAGENET1K_V2  # V2 weights available
         model = models.resnext101_32x8d(weights=weights)
@@ -95,7 +106,7 @@ def create_model(model_name, num_classes, freeze_layers=True):
         num_features = model.fc.in_features
         model.fc = nn.Linear(num_features, num_classes)
 
-    elif model_name == 'swinv2_b':
+    elif model_name == 'swinv2_b': # Cuda Ran Out of Memory Error
         from torchvision.models import Swin_V2_B_Weights
         weights = Swin_V2_B_Weights.IMAGENET1K_V1  # Only V1 available
         model = models.swin_v2_b(weights=weights)
@@ -115,7 +126,7 @@ def create_model(model_name, num_classes, freeze_layers=True):
         num_features = model.head.in_features
         model.head = nn.Linear(num_features, num_classes)
 
-    elif model_name == 'swinv2_t':
+    elif model_name == 'swinv2_t': # Image Error in DataLoader
         from torchvision.models import Swin_V2_T_Weights
         weights = Swin_V2_T_Weights.IMAGENET1K_V1  # Only V1 available
         model = models.swin_v2_t(weights=weights)

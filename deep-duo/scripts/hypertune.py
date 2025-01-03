@@ -24,7 +24,7 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
     from data.transforms import get_transforms
     from data.dataloader import get_dataloaders
     from ray.air import session, Checkpoint
-
+    print(f"Starting training with model: {config['model_name']} on dataset: {dataset_name}")
     learning_rate = config['learning_rate']
     weight_decay = config['weight_decay']
     batch_size = config['batch_size']
@@ -191,7 +191,7 @@ def main():
     reporter = CLIReporter(
         parameter_columns=['learning_rate', 'weight_decay'],
         metric_columns=[validation_metric, 'training_iteration'],
-        max_report_frequency=600
+        max_report_frequency=900
     )
 
     result = tune.run(
@@ -204,7 +204,7 @@ def main():
         ),
         resources_per_trial={'cpu': num_workers, 'gpu': 1 if torch.cuda.is_available() else 0},
         config=config_lp,
-        num_samples=4,
+        num_samples=8,
         scheduler=scheduler,
         progress_reporter=reporter,
         local_dir='ray_results',
