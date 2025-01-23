@@ -1,7 +1,7 @@
 training:
   batch_size: 16
   num_epochs_lp: 4 #4
-  num_epochs_ff: 8 #8
+  num_epochs_ff: 8 #10
   criterion: 'CrossEntropyLoss'
   device: 'cuda'
   num_workers: 4

@@ -42,6 +42,7 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
         print("Fully Finetune Phase:")
         for param in model.parameters():
             param.requires_grad = True
+        print("All grad activated!")
     else:
         print("Linear Probing Phase:")
         
@@ -127,6 +128,8 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
         scheduler.step()
 
 def main():
+    num_finetune_samples = 4
+    num_lp_sample = 4
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Hyperparameter tuning script')
     parser.add_argument('--model_name', type=str, required=True, help='Name of the model to train')
@@ -135,17 +138,13 @@ def main():
     args = parser.parse_args()
 
     # Load configurations
-    model_config_path = os.path.join(args.config_dir, 'model_config.yaml')
     dataset_config_path = os.path.join(args.config_dir, 'dataset_config.yaml')
     training_config_path = os.path.join(args.config_dir, f'training_config_{args.dataset_name}.yaml')
 
-    model_config = load_config(model_config_path)
     dataset_config = load_config(dataset_config_path)
     training_config = load_config(training_config_path)
 
     model_name = args.model_name
-    if model_name.lower() not in [m.lower() for m in model_config['models']]:
-        raise ValueError(f"Model '{model_name}' not found in model_config.yaml")
 
     dataset_name = args.dataset_name
     dataset_params = next(
@@ -182,7 +181,7 @@ def main():
 
     scheduler = ASHAScheduler(
         max_t=num_epochs_lp,
-        grace_period=2,
+        grace_period=1,
         reduction_factor=2,
         metric=validation_metric,
         mode='max'
@@ -204,7 +203,7 @@ def main():
         ),
         resources_per_trial={'cpu': num_workers, 'gpu': 1 if torch.cuda.is_available() else 0},
         config=config_lp,
-        num_samples=8,
+        num_samples=num_lp_sample,
         scheduler=scheduler,
         progress_reporter=reporter,
         local_dir='ray_results',
@@ -251,7 +250,7 @@ def main():
     }
     finetune_scheduler = ASHAScheduler(
         max_t=finetune_config['num_epochs'],
-        grace_period=2,
+        grace_period=1,
         reduction_factor=2,
         metric=validation_metric,
         mode='max'
@@ -268,7 +267,7 @@ def main():
         ),
         resources_per_trial={'cpu': num_workers, 'gpu': 1 if torch.cuda.is_available() else 0},
         config=finetune_config,
-        num_samples=4,
+        num_samples=num_finetune_samples,
         scheduler=finetune_scheduler,
         progress_reporter=reporter,
         local_dir='ray_results',

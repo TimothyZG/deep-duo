@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --mem=64000M
+#SBATCH --mem=32000M
 #SBATCH --nodes=1
-#SBATCH --gres=gpu:4               # Request 1 GPUs
+#SBATCH --gres=gpu:2         
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=16         # Number of CPU cores per task
-#SBATCH --time=24:00:00            # 24 hours
+#SBATCH --cpus-per-task=4         
+#SBATCH --time=16:00:00            
 #SBATCH --mail-user=<tiange.zhou@outlook.com>
 #SBATCH --mail-type=ALL
 #SBATCH --output=logs/train_and_evaluate-%j.out
@@ -18,8 +18,11 @@ export DATA_DIR=$SLURM_TMPDIR/data/iwildcam_v2.0
 mkdir -p $DATA_DIR
 tar xf Data/iwildcam_v2.0.tar -C $DATA_DIR --strip-components=1
 
-MODEL_NAME=vit_l_16
+MODEL_NAME=maxvit_t
 DATASET_NAME=iwildcam
+
+echo "MODEL_NAME = $MODEL_NAME"
+echo "DATASET_NAME = $DATASET_NAME"
 
 # Train the model
 python deep-duo/scripts/hypertune.py \

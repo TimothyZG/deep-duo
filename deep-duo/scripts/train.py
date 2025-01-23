@@ -30,24 +30,16 @@ def main(config, checkpoint_dir=None):
     args = parser.parse_args()
 
     # Load configurations
-    model_config_path = os.path.join(args.config_dir, 'model_config.yaml')
     dataset_config_path = os.path.join(args.config_dir, 'dataset_config.yaml')
     training_config_path = os.path.join(args.config_dir, f'training_config_{args.dataset_name}.yaml')
 
     print(f"{os.getcwd()=}")
-    model_config = load_config(model_config_path)
     dataset_config = load_config(dataset_config_path)
     training_config = load_config(training_config_path)
-    print(f"{model_config=}")
     print(f"{dataset_config=}")
     print(f"{training_config=}")
 
-    # Check if model is in model_config
-    model_name = args.model_name
-    model_params = next((item for item in model_config['models'] if item.lower() == model_name.lower()), None)
-    if not model_params:
-        raise ValueError(f"Model '{model_name}' not found in model_config.yaml")
-    
+
     # Get dataset-specific configurations
     dataset_name = args.dataset_name
     dataset_params = next((item for item in dataset_config['datasets'] if item['name'].lower() == dataset_name.lower()), None)
