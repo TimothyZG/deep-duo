@@ -110,7 +110,7 @@ def create_model(model_name, num_classes, freeze_layers=True):
         if freeze_layers:
             freeze_model_layers(model)
         in_features = model.classifier[5].in_features
-        model.classifier[5] = nn.Linear(in_features, new_num_classes)
+        model.classifier[5] = nn.Linear(in_features, num_classes)
 
     # ---------------------------
     # ConvNeXt Small
@@ -233,7 +233,7 @@ def create_model(model_name, num_classes, freeze_layers=True):
                 param.requires_grad = False
 
         # Add a new classifier layer on top of the vision transformer
-        vision_width = model.visual.width  # dimension of visual embeddings
+        vision_width = model.visual.num_features
         model.visual.classifier = nn.Linear(vision_width, num_classes)
 
     else:

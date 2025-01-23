@@ -18,7 +18,7 @@ export DATA_DIR=$SLURM_TMPDIR/data/iwildcam_v2.0
 mkdir -p $DATA_DIR
 tar xf Data/iwildcam_v2.0.tar -C $DATA_DIR --strip-components=1
 
-MODEL_NAME=maxvit_t
+MODEL_NAME=vit_l_16
 DATASET_NAME=iwildcam
 
 echo "MODEL_NAME = $MODEL_NAME"

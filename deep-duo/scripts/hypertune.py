@@ -51,13 +51,15 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
     # Get data transforms
     transforms = get_transforms(dataset_name)
 
+    resize = 384 if config['model_name']== "vit_b_16" else 512 if config['model_name'] == "vit_l_16" else 224
     # Prepare data loaders
     data_loaders = get_dataloaders(
         dataset_name=dataset_name,
         root_dir=root_dir,
         batch_size=batch_size,
         num_workers=num_workers,
-        transforms=transforms
+        transforms=transforms,
+        resize = resize
     )
 
     # Set up criterion, optimizer, and scheduler
