@@ -9,4 +9,7 @@ iwildcam-target/
 caltech256/
 caltech256-target/
 *.pyc
+*.gz
+*.tar
+ImgNet
 __pycache__/

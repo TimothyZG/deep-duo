@@ -49,9 +49,9 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
     model = model.to(device)
 
     # Get data transforms
-    transforms = get_transforms(dataset_name)
-
     resize = 384 if config['model_name']== "vit_b_16" else 512 if config['model_name'] == "vit_l_16" else 224
+    transforms = get_transforms(dataset_name,resize)
+
     # Prepare data loaders
     data_loaders = get_dataloaders(
         dataset_name=dataset_name,
@@ -137,6 +137,7 @@ def main():
     parser.add_argument('--model_name', type=str, required=True, help='Name of the model to train')
     parser.add_argument('--dataset_name', type=str, required=True, help='Name of the dataset to use')
     parser.add_argument('--config_dir', type=str, default='deep-duo/configs', help='Directory of the configuration files')
+    parser.add_argument('--skip_lp', type=bool, default=False, help='Directory of the configuration files')
     args = parser.parse_args()
 
     # Load configurations
@@ -167,77 +168,79 @@ def main():
     # Device configuration
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    ray.init(
-        runtime_env={"working_dir": os.path.dirname(os.path.dirname(os.path.abspath(__file__)))},
-        log_to_driver=False
-    )
-    
-    config_lp = {
-        'model_name': model_name,
-        'learning_rate': tune.loguniform(1e-4, 1e-2),
-        'weight_decay': tune.loguniform(1e-6, 1e-4),
-        'batch_size': batch_size,
-        'num_epochs': num_epochs_lp,
-        'num_workers': num_workers,
-    }
+    if (not args.skip_lp):
+        ray.init(
+            runtime_env={"working_dir": os.path.dirname(os.path.dirname(os.path.abspath(__file__)))},
+            log_to_driver=False
+        )
+        
+        config_lp = {
+            'model_name': model_name,
+            'learning_rate': tune.loguniform(1e-4, 1e-2),
+            'weight_decay': tune.loguniform(1e-6, 1e-4),
+            'batch_size': batch_size,
+            'num_epochs': num_epochs_lp,
+            'num_workers': num_workers,
+        }
 
-    scheduler = ASHAScheduler(
-        max_t=num_epochs_lp,
-        grace_period=1,
-        reduction_factor=2,
-        metric=validation_metric,
-        mode='max'
-    )
+        scheduler = ASHAScheduler(
+            max_t=num_epochs_lp,
+            grace_period=1,
+            reduction_factor=2,
+            metric=validation_metric,
+            mode='max'
+        )
 
-    reporter = CLIReporter(
-        parameter_columns=['learning_rate', 'weight_decay'],
-        metric_columns=[validation_metric, 'training_iteration'],
-        max_report_frequency=900
-    )
+        reporter = CLIReporter(
+            parameter_columns=['learning_rate', 'weight_decay'],
+            metric_columns=[validation_metric, 'training_iteration'],
+            max_report_frequency=900
+        )
 
-    result = tune.run(
-        tune.with_parameters(
-            train_model,
-            num_classes=num_classes,
-            root_dir=root_dir,
-            dataset_name=dataset_name,
-            device=device
-        ),
-        resources_per_trial={'cpu': num_workers, 'gpu': 1 if torch.cuda.is_available() else 0},
-        config=config_lp,
-        num_samples=num_lp_sample,
-        scheduler=scheduler,
-        progress_reporter=reporter,
-        local_dir='ray_results',
-        keep_checkpoints_num=1
-    )
+        result = tune.run(
+            tune.with_parameters(
+                train_model,
+                num_classes=num_classes,
+                root_dir=root_dir,
+                dataset_name=dataset_name,
+                device=device
+            ),
+            resources_per_trial={'cpu': num_workers, 'gpu': 1 if torch.cuda.is_available() else 0},
+            config=config_lp,
+            num_samples=num_lp_sample,
+            scheduler=scheduler,
+            progress_reporter=reporter,
+            local_dir='ray_results',
+            keep_checkpoints_num=1,
+            fail_fast=False
+        )
 
-    best_trial = result.get_best_trial(validation_metric, 'max', 'last')
-    print(f"Best trial config: {best_trial.config}")
-    print(f"Best trial final validation metric: {best_trial.last_result[validation_metric]}")
-    
+        best_trial = result.get_best_trial(validation_metric, 'max', 'last')
+        print(f"Best trial config: {best_trial.config}")
+        print(f"Best trial final validation metric: {best_trial.last_result[validation_metric]}")
+        
 
-    best_checkpoint = result.get_best_checkpoint(
-        trial=best_trial,
-        metric=validation_metric,
-        mode='max'
-    )
-    
-    # Access the checkpoint directory
-    with best_checkpoint.as_directory() as checkpoint_dir:
-        checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pt")
-        checkpoint_data = torch.load(checkpoint_path)
-        model_state = checkpoint_data['model_state_dict']
-    
-    best_model = create_model(model_name=best_trial.config['model_name'], num_classes=num_classes)
-    best_model.load_state_dict(model_state)
-    best_model.to(device)
+        best_checkpoint = result.get_best_checkpoint(
+            trial=best_trial,
+            metric=validation_metric,
+            mode='max'
+        )
+        
+        # Access the checkpoint directory
+        with best_checkpoint.as_directory() as checkpoint_dir:
+            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pt")
+            checkpoint_data = torch.load(checkpoint_path)
+            model_state = checkpoint_data['model_state_dict']
+        
+        best_model = create_model(model_name=best_trial.config['model_name'], num_classes=num_classes)
+        best_model.load_state_dict(model_state)
+        best_model.to(device)
 
-    # Save the best model
-    os.makedirs('checkpoints', exist_ok=True)
-    model_save_path = f'checkpoints/best_lp_model_{model_name}_{dataset_name}.pth'
-    torch.save(best_model.state_dict(), model_save_path)
-    print(f"Best lp model saved to '{model_save_path}'")
+        # Save the best model
+        os.makedirs('checkpoints', exist_ok=True)
+        model_save_path = f'checkpoints/best_lp_model_{model_name}_{dataset_name}.pth'
+        torch.save(best_model.state_dict(), model_save_path)
+        print(f"Best lp model saved to '{model_save_path}'")
     
     # Fully Finetune Phase
     ###########===============################
@@ -273,7 +276,8 @@ def main():
         scheduler=finetune_scheduler,
         progress_reporter=reporter,
         local_dir='ray_results',
-        keep_checkpoints_num=1
+        keep_checkpoints_num=1,
+        fail_fast=False
     )
     best_finetune_trial = finetune_result.get_best_trial(validation_metric, 'max', 'last')
     print(f"Best finetune trial config: {best_finetune_trial.config}")

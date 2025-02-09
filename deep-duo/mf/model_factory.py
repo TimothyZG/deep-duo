@@ -8,7 +8,7 @@ def freeze_model_layers(model):
     for param in model.parameters():
         param.requires_grad = False
 
-def create_model(model_name, num_classes, freeze_layers=True):
+def create_model(model_name, num_classes=0, freeze_layers=True, use_imagenet=False):
     """
     Creates a model from torchvision with specified pretrained weights,
     optionally freezes all layers, and replaces the classifier/head
@@ -25,8 +25,9 @@ def create_model(model_name, num_classes, freeze_layers=True):
         model = models.mobilenet_v3_large(weights=weights)
         if freeze_layers:
             freeze_model_layers(model)
-        in_features = model.classifier[3].in_features
-        model.classifier[3] = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.classifier[3].in_features
+            model.classifier[3] = nn.Linear(in_features, num_classes)
 
     # ---------------------------
     # MNASNet 1.3
@@ -37,8 +38,9 @@ def create_model(model_name, num_classes, freeze_layers=True):
         model = models.mnasnet1_3(weights=weights)
         if freeze_layers:
             freeze_model_layers(model)
-        in_features = model.classifier[1].in_features
-        model.classifier[1] = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.classifier[1].in_features
+            model.classifier[1] = nn.Linear(in_features, num_classes)
 
     # ---------------------------
     # ShuffleNet V2 x2.0
@@ -49,8 +51,9 @@ def create_model(model_name, num_classes, freeze_layers=True):
         model = models.shufflenet_v2_x2_0(weights=weights)
         if freeze_layers:
             freeze_model_layers(model)
-        in_features = model.fc.in_features
-        model.fc = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.fc.in_features
+            model.fc = nn.Linear(in_features, num_classes)
 
     # ---------------------------
     # EfficientNet B1
@@ -61,8 +64,9 @@ def create_model(model_name, num_classes, freeze_layers=True):
         model = models.efficientnet_b1(weights=weights)
         if freeze_layers:
             freeze_model_layers(model)
-        in_features = model.classifier[1].in_features
-        model.classifier[1] = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.classifier[1].in_features
+            model.classifier[1] = nn.Linear(in_features, num_classes)
 
     # ---------------------------
     # EfficientNet B2
@@ -73,8 +77,35 @@ def create_model(model_name, num_classes, freeze_layers=True):
         model = models.efficientnet_b2(weights=weights)
         if freeze_layers:
             freeze_model_layers(model)
-        in_features = model.classifier[1].in_features
-        model.classifier[1] = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.classifier[1].in_features
+            model.classifier[1] = nn.Linear(in_features, num_classes)
+            
+    # ---------------------------
+    # EfficientNet B3
+    # ---------------------------
+    elif model_name == 'efficientnet_b3':
+        from torchvision.models import EfficientNet_B3_Weights
+        weights = EfficientNet_B3_Weights.IMAGENET1K_V1
+        model = models.efficientnet_b3(weights=weights)
+        if freeze_layers:
+            freeze_model_layers(model)
+        if not use_imagenet:
+            in_features = model.classifier[1].in_features
+            model.classifier[1] = nn.Linear(in_features, num_classes)
+            
+    # ---------------------------
+    # EfficientNet B4
+    # ---------------------------
+    elif model_name == 'efficientnet_b4':
+        from torchvision.models import EfficientNet_B4_Weights
+        weights = EfficientNet_B4_Weights.IMAGENET1K_V1
+        model = models.efficientnet_b4(weights=weights)
+        if freeze_layers:
+            freeze_model_layers(model)
+        if not use_imagenet:
+            in_features = model.classifier[1].in_features
+            model.classifier[1] = nn.Linear(in_features, num_classes)
 
     # ---------------------------
     # ConvNeXt Tiny
@@ -85,8 +116,9 @@ def create_model(model_name, num_classes, freeze_layers=True):
         model = models.convnext_tiny(weights=weights)
         if freeze_layers:
             freeze_model_layers(model)
-        in_features = model.classifier[2].in_features
-        model.classifier[2] = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.classifier[2].in_features
+            model.classifier[2] = nn.Linear(in_features, num_classes)
 
     # ---------------------------
     # Swin Transformer (Tiny)
@@ -97,8 +129,9 @@ def create_model(model_name, num_classes, freeze_layers=True):
         model = models.swin_t(weights=weights)
         if freeze_layers:
             freeze_model_layers(model)
-        in_features = model.head.in_features
-        model.head = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.head.in_features
+            model.head = nn.Linear(in_features, num_classes)
 
     # ---------------------------
     # MaxViT Tiny
@@ -109,9 +142,23 @@ def create_model(model_name, num_classes, freeze_layers=True):
         model = models.maxvit_t(weights=weights)
         if freeze_layers:
             freeze_model_layers(model)
-        in_features = model.classifier[5].in_features
-        model.classifier[5] = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.classifier[5].in_features
+            model.classifier[5] = nn.Linear(in_features, num_classes)
 
+    # ---------------------------
+    # Swin V2 T
+    # ---------------------------
+    elif model_name == 'swin_v2_t':
+        from torchvision.models import Swin_V2_T_Weights
+        weights = Swin_V2_T_Weights.IMAGENET1K_V1
+        model = models.swin_v2_t(weights=weights)
+        if freeze_layers:
+            freeze_model_layers(model)
+        if not use_imagenet:
+            in_features = model.head.in_features
+            model.head = nn.Linear(in_features, num_classes)
+            
     # ---------------------------
     # ConvNeXt Small
     # ---------------------------
@@ -121,8 +168,9 @@ def create_model(model_name, num_classes, freeze_layers=True):
         model = models.convnext_small(weights=weights)
         if freeze_layers:
             freeze_model_layers(model)
-        in_features = model.classifier[2].in_features
-        model.classifier[2] = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.classifier[2].in_features
+            model.classifier[2] = nn.Linear(in_features, num_classes)
 
     # ---------------------------
     # Swin V2 Small
@@ -133,8 +181,9 @@ def create_model(model_name, num_classes, freeze_layers=True):
         model = models.swin_v2_s(weights=weights)
         if freeze_layers:
             freeze_model_layers(model)
-        in_features = model.head.in_features
-        model.head = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.head.in_features
+            model.head = nn.Linear(in_features, num_classes)
         
     # ---------------------------
     # Swin V2 Base
@@ -145,8 +194,9 @@ def create_model(model_name, num_classes, freeze_layers=True):
         model = models.swin_v2_b(weights=weights)
         if freeze_layers:
             freeze_model_layers(model)
-        in_features = model.head.in_features
-        model.head = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.head.in_features
+            model.head = nn.Linear(in_features, num_classes)
 
     # ---------------------------
     # EfficientNet V2 M
@@ -157,8 +207,9 @@ def create_model(model_name, num_classes, freeze_layers=True):
         model = models.efficientnet_v2_m(weights=weights)
         if freeze_layers:
             freeze_model_layers(model)
-        in_features = model.classifier[1].in_features
-        model.classifier[1] = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.classifier[1].in_features
+            model.classifier[1] = nn.Linear(in_features, num_classes)
 
     # ---------------------------
     # ConvNeXt Base
@@ -169,8 +220,9 @@ def create_model(model_name, num_classes, freeze_layers=True):
         model = models.convnext_base(weights=weights)
         if freeze_layers:
             freeze_model_layers(model)
-        in_features = model.classifier[2].in_features
-        model.classifier[2] = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.classifier[2].in_features
+            model.classifier[2] = nn.Linear(in_features, num_classes)
         
     # ---------------------------
     # ConvNeXt Large
@@ -181,8 +233,9 @@ def create_model(model_name, num_classes, freeze_layers=True):
         model = models.convnext_large(weights=weights)
         if freeze_layers:
             freeze_model_layers(model)
-        in_features = model.classifier[2].in_features
-        model.classifier[2] = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.classifier[2].in_features
+            model.classifier[2] = nn.Linear(in_features, num_classes)
 
     # ---------------------------
     # ViT Base 16
@@ -194,8 +247,9 @@ def create_model(model_name, num_classes, freeze_layers=True):
         if freeze_layers:
             freeze_model_layers(model)
         # ViT has a "heads" attribute: model.heads.head
-        in_features = model.heads.head.in_features
-        model.heads.head = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.heads.head.in_features
+            model.heads.head = nn.Linear(in_features, num_classes)
 
     # ---------------------------
     # EfficientNet V2 L
@@ -206,8 +260,9 @@ def create_model(model_name, num_classes, freeze_layers=True):
         model = models.efficientnet_v2_l(weights=weights)
         if freeze_layers:
             freeze_model_layers(model)
-        in_features = model.classifier[1].in_features
-        model.classifier[1] = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.classifier[1].in_features
+            model.classifier[1] = nn.Linear(in_features, num_classes)
 
     # ---------------------------
     # ViT Large 16
@@ -218,23 +273,24 @@ def create_model(model_name, num_classes, freeze_layers=True):
         model = models.vit_l_16(weights=weights)
         if freeze_layers:
             freeze_model_layers(model)
-        in_features = model.heads.head.in_features
-        model.heads.head = nn.Linear(in_features, num_classes)
+        if not use_imagenet:
+            in_features = model.heads.head.in_features
+            model.heads.head = nn.Linear(in_features, num_classes)
 
     elif model_name == 'vit_base_clip':
-        # OpenAI's pretrained weights
-        model, _, _ = open_clip.create_model_and_transforms(
-            model_name='ViT-B-32', 
-            pretrained='openai'
+        import timm
+        model = timm.create_model(
+            "vit_base_patch16_clip_224.laion2b", 
+            pretrained=True,  # Download and load pretrained weights
+            num_classes=num_classes  # Immediately sets up the final layer for our task
         )
-        # Optional: freeze all layers
+        
+        # Optionally freeze all layers except the final classifier
         if freeze_layers:
-            for param in model.parameters():
-                param.requires_grad = False
+            for name, param in model.named_parameters():
+                if "head" not in name:  # 'head' is typically timm's classification layer
+                    param.requires_grad = False
 
-        # Add a new classifier layer on top of the vision transformer
-        vision_width = model.visual.num_features
-        model.visual.classifier = nn.Linear(vision_width, num_classes)
 
     else:
         raise ValueError(f"Model '{model_name}' is not supported or not implemented.")
