@@ -4,7 +4,7 @@ import pandas as pd
 from sklearn.metrics import f1_score, accuracy_score
 from tqdm import tqdm
 
-def evaluate_model(model, dataloader, criterion, device, dataset_name, model_name, eval_type):
+def evaluate_model(model, dataloader, criterion, device, dataset_name, model_name, eval_type,temp_scaled=False):
     """
     Evaluate the model on a given dataloader and save results.
 
@@ -25,6 +25,8 @@ def evaluate_model(model, dataloader, criterion, device, dataset_name, model_nam
 
     # Create directory for saving results if it doesn't exist
     pred_folder_path = f"./{dataset_name}"
+    if temp_scaled:
+        pred_folder_path = f"./{dataset_name}_tp"
     target_folder_path = f"./{dataset_name}-target"
     os.makedirs(pred_folder_path, exist_ok=True)
 

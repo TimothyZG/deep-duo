@@ -13,3 +13,8 @@ caltech256-target/
 *.tar
 ImgNet
 __pycache__/
+*.csv
+*.json
+iwildcam_tp
+ImgNet_tp
+ImgNet_partial
