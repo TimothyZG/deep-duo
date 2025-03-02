@@ -17,28 +17,26 @@ def get_duo_property(backbone_df_path, arch1: str, arch2: str, property: str, ty
     prop_ls = np.array([prop1,prop2])
     res = np.sum(prop_ls) if type=="sum" else np.min(prop_ls)/np.max(prop_ls)
     return res
-# Example Usage:
-# backbone_df = pd.read_csv("backbones.csv")
-# display(backbone_df)
-# get_duo_property("backbones.csv","EfficientNetV2_S","DenseNet_121","GFlops","imbalance")
 
-def calc_entr_torch(P):
-    P_tensor = torch.tensor(P.values, dtype=torch.float32)
-    P_softmax = F.softmax(P_tensor, dim=1)
+def calc_entr_torch(P, device):
+    P_tensor = torch.tensor(P.values, dtype=torch.float32, device=device)
     P_log_softmax = F.log_softmax(P_tensor, dim=1)
-    elem_wise_entr = -torch.sum(P_softmax*P_log_softmax,dim=1)
-    return elem_wise_entr.numpy()
-    
-def calc_cross_entr_torch(P, Q):
-    P_tensor = torch.tensor(P.values, dtype=torch.float32)
-    Q_tensor = torch.tensor(Q.values, dtype=torch.float32)
-    P_softmax = F.softmax(P_tensor, dim=1)
+    P_softmax = torch.exp(P_log_softmax)  # More stable than softmax directly
+    elem_wise_entr = -torch.sum(P_softmax * P_log_softmax, dim=1)
+    return elem_wise_entr.cpu().numpy()  # Ensure CPU conversion
+
+def calc_cross_entr_torch(P, Q, device):
+    P_tensor = torch.tensor(P.values, dtype=torch.float32, device=device)
+    Q_tensor = torch.tensor(Q.values, dtype=torch.float32, device=device)
+    P_log_softmax = F.log_softmax(P_tensor, dim=1)
+    P_softmax = torch.exp(P_log_softmax)
     Q_log_softmax = F.log_softmax(Q_tensor, dim=1)
     elem_wise_cross_entr = -(P_softmax*Q_log_softmax).sum(dim=1)
-    return elem_wise_cross_entr.numpy()
+    return elem_wise_cross_entr.cpu().numpy()
 
-def calc_kl_torch(P, Q):
-    return calc_cross_entr_torch(P,Q) - calc_entr_torch(P)
+
+def calc_kl_torch(P, Q, device):
+    return calc_cross_entr_torch(P,Q,device) - calc_entr_torch(P,device)
 
 def calc_kl_ignoretop_torch(P, Q):
     # Convert DataFrames to NumPy arrays

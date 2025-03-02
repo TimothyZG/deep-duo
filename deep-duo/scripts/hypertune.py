@@ -130,8 +130,8 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
         scheduler.step()
 
 def main():
-    num_finetune_samples = 4
-    num_lp_sample = 4
+    num_finetune_samples = 12
+    num_lp_sample = 8
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Hyperparameter tuning script')
     parser.add_argument('--model_name', type=str, required=True, help='Name of the model to train')
@@ -177,7 +177,7 @@ def main():
         config_lp = {
             'model_name': model_name,
             'learning_rate': tune.loguniform(1e-4, 1e-2),
-            'weight_decay': tune.loguniform(1e-6, 1e-4),
+            'weight_decay': tune.loguniform(1e-7, 1e-4),
             'batch_size': batch_size,
             'num_epochs': num_epochs_lp,
             'num_workers': num_workers,
@@ -185,8 +185,8 @@ def main():
 
         scheduler = ASHAScheduler(
             max_t=num_epochs_lp,
-            grace_period=1,
-            reduction_factor=2,
+            grace_period=2,
+            reduction_factor=3,
             metric=validation_metric,
             mode='max'
         )
@@ -243,12 +243,12 @@ def main():
         print(f"Best lp model saved to '{model_save_path}'")
     
     # Fully Finetune Phase
-    ###########===============################
+    ###########===============##YumiYumi##############
     
     finetune_config = {
         'model_name': model_name,
         'learning_rate': tune.loguniform(1e-6, 1e-4),
-        'weight_decay': tune.loguniform(1e-6, 1e-4),
+        'weight_decay': tune.loguniform(1e-8, 1e-5),
         'batch_size': batch_size,
         'num_epochs': training_params.get('num_epochs_ff', 1),
         'num_workers': num_workers,

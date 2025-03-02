@@ -11,6 +11,7 @@ from multiprocessing import Manager
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import configs.config_imgnet as config
 import utils.utils as utils
+import torch
 
 
 ## notebook 1 gen-data imagenet
@@ -22,20 +23,21 @@ predictor_categories = {
     "Dictatorial Duo":[],
 }
 
-backbones = pd.read_csv(config.backbone_csv_path).sort_values("GFlops",ignore_index=True)
-backbones_ls = backbones["Architecture"].str.lower()
+backbones = pd.read_csv(config.backbone_csv_path).sort_values("GFLOPS",ignore_index=True)
+backbones_ls = backbones["Weight"]
+print(f"{backbones}")
 raw_pred_ls = os.listdir(config.logit_pred_dir)
-
-ff_available_ls_unsorted = [raw_pred[:-11] for raw_pred in raw_pred_ls]
-ff_available_ls_resorted = utils.intersection(ff_available_ls_unsorted, backbones_ls)
-ff_available_ls = [bck for bck in ff_available_ls_resorted]
-
+print(f"{raw_pred_ls=}")
+available_pred_ls_unsorted = [raw_pred[:-11] for raw_pred in raw_pred_ls]
+print(f"{available_pred_ls_unsorted=}")
+available_pred_ls_resorted = utils.intersection(available_pred_ls_unsorted, backbones_ls)
+available_pred_ls = available_pred_ls_resorted
 # Deduplicate:
-avail_model_dict = {"ff":ff_available_ls}
-print(f"{len(ff_available_ls)=}")
+avail_model_dict = {"ff":available_pred_ls}
+print(f"{available_pred_ls=}")
 print(avail_model_dict)
-"""
-for ff_available in ff_available_ls: predictor_categories["Single Model"].append(ff_available)
+
+for ff_available in available_pred_ls: predictor_categories["Single Model"].append(ff_available)
 # Deduplicate:
 predictor_categories["Single Model"] = list(set(predictor_categories["Single Model"]))
 
@@ -43,50 +45,60 @@ softvote_save_dir = config.sv_pred_dir
 if not os.path.exists(config.sv_pred_dir):
     os.makedirs(config.sv_pred_dir)
 
+large_model_ls = ["ViT_L_16-IMAGENET1K_SWAG_E2E_V1",
+                  "ViT_L_16-IMAGENET1K_SWAG_LINEAR_V1",
+                  "ViT_H_14-IMAGENET1K_SWAG_LINEAR_V1",
+                  "ConvNeXt_Large-IMAGENET1K_V1",
+                  "EfficientNet_V2_L-IMAGENET1K_V1",
+                  "Swin_V2_B-IMAGENET1K_V1",
+                  "ConvNeXt_Base-IMAGENET1K_V1"]
+
 for (model_type, model_ls) in avail_model_dict.items():
     for comb in itertools.combinations(model_ls, 2):
         member1, member2 = comb
+        if member2 not in large_model_ls:
+            continue
         softvote_predictor_name = f"softvote({member1},{member2})"
+        if not (softvote_predictor_name in predictor_categories["Softvote Duo"]):
+            predictor_categories["Softvote Duo"].append(softvote_predictor_name)
         save_loc=f"{config.sv_pred_dir}/{softvote_predictor_name}_logits.csv"
+        if os.path.exists(save_loc):
+            continue
         pred_1 = pd.read_csv(f"{config.logit_pred_dir}/{member1}_logits.csv")
         pred_2 = pd.read_csv(f"{config.logit_pred_dir}/{member2}_logits.csv")
         softvote_prediction = utils.softvote(pred_1,pred_2)
         softvote_prediction.to_csv(save_loc, index=False)
-        if not (softvote_predictor_name in predictor_categories["Softvote Duo"]):
-            predictor_categories["Softvote Duo"].append(softvote_predictor_name)
             
 unc_dir = config.unc_dir
 if not os.path.exists(unc_dir):
     os.makedirs(unc_dir)
 warnings.filterwarnings('ignore')
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 unc = pd.DataFrame()
+
 for category, models in predictor_categories.items():
     print(f"Evaluating {category} predictors...")
     for predictor in models:
         pred_dir = config.logit_pred_dir if category=="Single Model" else config.sv_pred_dir
         pred = pd.read_csv(f"{pred_dir}/{predictor}_logits.csv")
-        unc[f"Entr[{predictor}]"]=utils.calc_entr_torch(pred)
+        unc[f"Entr[{predictor}]"]=utils.calc_entr_torch(pred,device)
         unc[f"SR[{predictor}]"]=utils.softmax_response_unc(pred)
         if(category == "Softvote Duo"):
             models = predictor.replace("softvote(", "").replace(")", "")
             memS, memL = models.split(",")
             pred_memS = pd.read_csv(f"{config.logit_pred_dir}/{memS}_logits.csv")
             pred_memL = pd.read_csv(f"{config.logit_pred_dir}/{memL}_logits.csv")
-            unc[f"KL[{memL}||{memS}]"]=utils.calc_kl_torch(pred_memL,pred_memS)
-            # unc[f"KL[{memS}||{memL}]"]=utils.calc_kl_torch(pred_memS,pred_memL)
-            # unc[f"MI[{memS}||{memL}]"]=(unc[f"KL[{memL}||{memS}]"]+unc[f"KL[{memS}||{memL}]"])/2
-            # unc[f"Entr[{predictor}]+KL_noise[{memL}||{memS}]"]=unc[f"Entr[{predictor}]"]+unc[f"KL_noise[{memL}||{memS}]"]
+            unc[f"KL[{memL}||{memS}]"]=utils.calc_kl_torch(pred_memL,pred_memS,device)
             unc[f"Entr[{predictor}]+KL[{memL}||{memS}]"]=unc[f"Entr[{predictor}]"]+unc[f"KL[{memL}||{memS}]"]
-            # unc[f"Entr[{predictor}]+KL[{memS}||{memL}]"]=unc[f"Entr[{predictor}]"]+unc[f"KL[{memS}||{memL}]"]
-            # unc[f"Entr[{predictor}]+MI[{memS}||{memL}]"]=unc[f"Entr[{predictor}]"]+unc[f"MI[{memS}||{memL}]"]
-            unc[f"Entr[{predictor}]*KL[{memL}||{memS}]"]=unc[f"Entr[{predictor}]"]*unc[f"KL[{memL}||{memS}]"]
 unc.to_csv(f"{unc_dir}/unc.csv", index=False)
 
 backbone_df = pd.read_csv(config.backbone_csv_path)
 
-def confident_predictor(pred_1, pred_2, unc1, unc2, gflops_balance = 0.5):
+def confident_predictor(pred_1, pred_2, unc1, unc2, gflops_balance = 1):
     print(f"{gflops_balance=}")
-    mask = (np.array(unc1)/np.array(unc2) < np.sqrt(gflops_balance))
+    mask = (np.array(unc1)/np.array(unc2) < gflops_balance)
     res = pred_2.copy()
     res[mask] = pred_1[mask]
     perc_small = np.mean(mask)
@@ -102,43 +114,34 @@ for (model_type, model_ls) in avail_model_dict.items():
     print(f"Current {model_ls=}")
     for comb in itertools.combinations(model_ls, 2):
         member1, member2 = comb
+        if member2 not in large_model_ls:
+            continue
         confident_predictor_name = f"confident({member1},{member2})"
+        if not (confident_predictor_name in predictor_categories["Confident Duo"]):
+                predictor_categories["Confident Duo"].append(confident_predictor_name)
         save_loc=f"{conf_dir}/{confident_predictor_name}_logits.csv"
+        if os.path.exists(save_loc):
+            continue
         unc = pd.read_csv(f"{config.unc_dir}/unc.csv")
         pred_1 = pd.read_csv(f"{config.logit_pred_dir}/{member1}_logits.csv")
         pred_2 = pd.read_csv(f"{config.logit_pred_dir}/{member2}_logits.csv")
         print(f"{member1=}, {member2=}")
-        gflops1=backbone_df.loc[backbone_df["Architecture"].str.lower() == member1]["GFlops"].iloc[0]
-        gflops2=backbone_df.loc[backbone_df["Architecture"].str.lower() == member2]["GFlops"].iloc[0]
-        gfbal = gflops1/gflops2
-        confident_prediction = confident_predictor(pred_1,pred_2,unc[f"SR[{member1}]"],unc[f"SR[{member2}]"],gfbal)
+        confident_prediction = confident_predictor(pred_1,pred_2,unc[f"SR[{member1}]"],unc[f"SR[{member2}]"])
         confident_prediction.to_csv(save_loc, index=False)
-        if not (confident_predictor_name in predictor_categories["Confident Duo"]):
-                predictor_categories["Confident Duo"].append(confident_predictor_name)
                 
                 
 unc = pd.read_csv(f"{config.unc_dir}/unc.csv")
 for predictor in predictor_categories["Confident Duo"]:
     pred_dir = config.cd_pred_dir
     pred = pd.read_csv(f"{pred_dir}/{predictor}_logits.csv")
-    unc[f"Entr[{predictor}]"]=utils.calc_entr_torch(pred)
+    unc[f"Entr[{predictor}]"]=utils.calc_entr_torch(pred,device)
     unc[f"SR[{predictor}]"]=utils.softmax_response_unc(pred)
     models = predictor.replace("confident(", "").replace(")", "")
     memS, memL = models.split(",")
     pred_memS = pd.read_csv(f"{config.logit_pred_dir}/{memS}_logits.csv")
     pred_memL = pd.read_csv(f"{config.logit_pred_dir}/{memL}_logits.csv")
     unc[f"Entr[{predictor}]+KL[{memL}||{memS}]"]=unc[f"Entr[{predictor}]"]+unc[f"KL[{memL}||{memS}]"]
-    # unc[f"Entr[{predictor}]+KL[{memS}||{memL}]"]=unc[f"Entr[{predictor}]"]+unc[f"KL[{memS}||{memL}]"]
-    # unc[f"Entr[{predictor}]+MI[{memS}||{memL}]"]=unc[f"Entr[{predictor}]"]+unc[f"MI[{memS}||{memL}]"]
-    unc[f"Entr[{predictor}]*KL[{memL}||{memS}]"]=unc[f"Entr[{predictor}]"]*unc[f"KL[{memL}||{memS}]"]
 unc.to_csv(f"{config.unc_dir}/unc.csv", index=False)
-
-"""
-"""
-# TODO: temporary
-with open(f"{config.dataset}_predictor_categories.json", "r") as file:
-    predictor_categories = json.load(file)
-# END: temporary
     
 dict_dir = config.dd_pred_dir
 if not os.path.exists(dict_dir):
@@ -150,17 +153,19 @@ for (model_type, model_ls) in avail_model_dict.items():
     print(f"Current {model_ls=}")
     for comb in itertools.combinations(model_ls, 2):
         member1, member2 = comb
+        if member2 not in large_model_ls:
+            continue
         pred_2 = pd.read_csv(f"{config.logit_pred_dir}/{member2}_logits.csv")
         dictatorial_predictor_name = f"dictatorial({member1},{member2})"
+        if not (dictatorial_predictor_name in predictor_categories["Dictatorial Duo"]):
+                predictor_categories["Dictatorial Duo"].append(dictatorial_predictor_name)
         dictatorial_prediction = pred_2
         unc[f"Entr[{dictatorial_predictor_name}]"]=unc[f"Entr[{member2}]"]
         unc[f"SR[{dictatorial_predictor_name}]"]=unc[f"SR[{member2}]"]
         save_loc=f"{dict_dir}/{dictatorial_predictor_name}_logits.csv"
         dictatorial_prediction.to_csv(save_loc, index=False)
-        if not (dictatorial_predictor_name in predictor_categories["Dictatorial Duo"]):
-                predictor_categories["Dictatorial Duo"].append(dictatorial_predictor_name)
 unc.to_csv(f"{config.unc_dir}/unc.csv", index=False)
-                    
+
 
 unc = pd.read_csv(f"{config.unc_dir}/unc.csv")
 print(f"Calculating Uncertainty Measures on test set")
@@ -170,16 +175,13 @@ for predictor in predictor_categories["Dictatorial Duo"]:
     models = predictor.replace("dictatorial(", "").replace(")", "")
     memS, memL = models.split(",")
     unc[f"Entr[{predictor}]+KL[{memL}||{memS}]"]=unc[f"Entr[{predictor}]"]+unc[f"KL[{memL}||{memS}]"]
-    # unc[f"Entr[{predictor}]+KL[{memS}||{memL}]"]=unc[f"Entr[{predictor}]"]+unc[f"KL[{memS}||{memL}]"]
-    # unc[f"Entr[{predictor}]+MI[{memS}||{memL}]"]=unc[f"Entr[{predictor}]"]+unc[f"MI[{memS}||{memL}]"]
-    unc[f"Entr[{predictor}]*KL[{memL}||{memS}]"]=unc[f"Entr[{predictor}]"]*unc[f"KL[{memL}||{memS}]"]
 unc.to_csv(f"{config.unc_dir}/unc.csv", index=False)
 
 
 
 with open(f"{config.dataset}_predictor_categories.json", "w") as file:
     json.dump(predictor_categories, file)
-"""
+
     
 ## Notebook 2
 num_class = config.num_class
@@ -308,6 +310,6 @@ auroc_results = pd.DataFrame(results)
 print("Final AUROC Results:")
 print(auroc_results.head())
 
-auroc_results.to_csv(f"evaluation/{config.dataset}_uncertainty_usefulness.csv")
+auroc_results.to_csv(f"evaluation/{config.dataset}_uncertainty_usefulness.csv",index=False)
 
 ## Notebook 3

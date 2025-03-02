@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --mem=32000M
 #SBATCH --nodes=1
-#SBATCH --gres=gpu:2       
+#SBATCH --gres=gpu:4       
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4         
-#SBATCH --time=10:00:00            
+#SBATCH --time=20:00:00            
 #SBATCH --mail-user=<tiange.zhou@outlook.com>
 #SBATCH --mail-type=ALL
 #SBATCH --output=logs/train_and_evaluate-%j.out
@@ -18,7 +18,7 @@ export DATA_DIR=$SLURM_TMPDIR/data/iwildcam_v2.0
 mkdir -p $DATA_DIR
 tar xf Data/iwildcam_v2.0.tar -C $DATA_DIR --strip-components=1
 
-MODEL_NAME=swin_v2_t
+MODEL_NAME=convnext_large
 DATASET_NAME=iwildcam
 
 echo "MODEL_NAME = $MODEL_NAME"

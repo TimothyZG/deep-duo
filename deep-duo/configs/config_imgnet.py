@@ -8,6 +8,6 @@ sv_pred_dir = f"pred/softvote-{dataset}"
 cd_pred_dir = f"pred/confident-{dataset}"
 dd_pred_dir = f"pred/dictatorial-{dataset}"
 unc_dir = f"pred/uncertainty-{dataset}"
-backbone_csv_path = f"backbones-iwildcam.csv"
+backbone_csv_path = f"backbones_selected.csv"
 
 target_dir = f"{dataset}"
