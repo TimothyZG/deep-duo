@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --mem=64G
 #SBATCH --nodes=1       
-#SBATCH --time=11:00:00     
+#SBATCH --time=12:00:00     
 #SBATCH --gres=gpu:1         
 #SBATCH --mail-user=<tiange.zhou@outlook.com>
 #SBATCH --mail-type=ALL

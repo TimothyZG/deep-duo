@@ -16,7 +16,6 @@ def main(config, checkpoint_dir=None):
     # Extract hyperparameters from config
     model_name = config['model_name']
     dataset_name = config['dataset_name']
-    config_dir = config.get('config_dir', 'deep-duo/configs')
     learning_rate = config['learning_rate']
     weight_decay = config['weight_decay']
     batch_size = config.get('batch_size', 64)

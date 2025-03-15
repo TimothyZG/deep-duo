@@ -1,7 +1,5 @@
-import torch
 import torch.nn as nn
 from torchvision import models
-import open_clip
 
 def freeze_model_layers(model):
     """Helper function to freeze all parameters of a model."""

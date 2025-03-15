@@ -1,5 +1,5 @@
-dataset = "ImgNet"
-num_class = 1000
+dataset = "caltech256"
+num_class = 257
 
 logit_pred_dir = f"{dataset}"
 sv_pred_dir = f"pred/softvote-{dataset}"
@@ -10,8 +10,7 @@ backbone_csv_path = f"backbones_selected.csv"
 
 target_dir = f"{dataset}"
 
-large_model_ls = ["ViT_H_14-IMAGENET1K_SWAG_LINEAR_V1",
-                #   "ConvNeXt_Large-IMAGENET1K_V1",
-                  "EfficientNet_V2_L-IMAGENET1K_V1",
-                #   "Swin_V2_B-IMAGENET1K_V1"
-                ]
+large_model_ls = ["convnext_base-IMAGENET1K_V1",
+                  "convnext_small-IMAGENET1K_V1",]
+                #   "swin_v2_s-IMAGENET1K_V1",
+                #   "swin_v2_b-IMAGENET1K_V1",]
