@@ -28,6 +28,8 @@ cov_range = np.arange(1, 100.1,0.5)
 
 if dataset == "ImageNet":
     import configs.config_imgnet as config
+elif dataset == "ImageNetV2":
+    import configs.config_imgnetV2 as config
 elif dataset == "Caltech256":
     import configs.config_caltech256 as config
 elif dataset == "IwildCamIND":
@@ -101,11 +103,14 @@ for model in predictor_categories["Single Model"]:
         
 ############# Make Duo Uncertainties ############
 for (memS,memL) in duo_combination:
-        pred_memS = pd.read_csv(f"{config.logit_pred_dir}/{memS}_logits.csv")
-        pred_memL = pd.read_csv(f"{config.logit_pred_dir}/{memL}_logits.csv")
-        unc[f"KL[{memL}||{memS}]"]=utils.calc_kl_torch(pred_memL,pred_memS,device)
-        unc[f"Entr[{memL}]+KL[{memL}||{memS}]"]=unc[f"KL[{memL}||{memS}]"]+unc[f"Entr[{memL}]"]
-
+    pred_memS = pd.read_csv(f"{config.logit_pred_dir}/{memS}_logits.csv")
+    pred_memL = pd.read_csv(f"{config.logit_pred_dir}/{memL}_logits.csv")
+    unc[f"KL[{memL}||{memS}]"]=utils.calc_kl_torch(pred_memL,pred_memS,device)
+    unc[f"Entr[{memL}]+KL[{memL}||{memS}]"]=unc[f"KL[{memL}||{memS}]"]+unc[f"Entr[{memL}]"]
+    unc[f"KL[{memS}||{memL}]"]=utils.calc_kl_torch(pred_memS,pred_memL,device)
+    unc[f"Entr[{memL}]+KL[{memS}||{memL}]"]=unc[f"KL[{memS}||{memL}]"]+unc[f"Entr[{memL}]"]
+    unc[f"MI[{memS}||{memL}]"]=utils.calc_mi_torch(pred_memL,pred_memS,device)
+    unc[f"Entr[{memL}]+MI[{memS}||{memL}]"]=unc[f"MI[{memS}||{memL}]"]+unc[f"Entr[{memL}]"]
 ############## Make Softvote & Confident & Dictatorial Duos ############
 for (member1, member2) in duo_combination:
     softvote_predictor_name = f"softvote({member1},{member2})"
@@ -119,7 +124,8 @@ for (member1, member2) in duo_combination:
     unc[f"Entr[{softvote_predictor_name}]"]=utils.calc_entr_torch(softvote_prediction,device)
     unc[f"SR[{softvote_predictor_name}]"]=utils.softmax_response_unc(softvote_prediction)
     unc[f"Entr[{softvote_predictor_name}]+KL[{member2}||{member1}]"]=unc[f"Entr[{softvote_predictor_name}]"]+unc[f"KL[{member2}||{member1}]"]
-    
+    unc[f"Entr[{softvote_predictor_name}]+KL[{member1}||{member2}]"]=unc[f"Entr[{softvote_predictor_name}]"]+unc[f"KL[{member1}||{member2}]"]
+    unc[f"Entr[{softvote_predictor_name}]+MI[{member1}||{member2}]"]=unc[f"MI[{member1}||{member2}]"]+unc[f"Entr[{softvote_predictor_name}]"]
     confident_predictor_name = f"confident({member1},{member2})"
     if not (confident_predictor_name in predictor_categories["Confident Duo"]):
         predictor_categories["Confident Duo"].append(confident_predictor_name)
@@ -129,7 +135,8 @@ for (member1, member2) in duo_combination:
     unc[f"Entr[{confident_predictor_name}]"]=utils.calc_entr_torch(confident_prediction,device)
     unc[f"SR[{confident_predictor_name}]"]=utils.softmax_response_unc(confident_prediction)
     unc[f"Entr[{confident_predictor_name}]+KL[{member2}||{member1}]"]=unc[f"Entr[{confident_predictor_name}]"]+unc[f"KL[{member2}||{member1}]"]
-    
+    unc[f"Entr[{confident_predictor_name}]+KL[{member1}||{member2}]"]=unc[f"Entr[{confident_predictor_name}]"]+unc[f"KL[{member1}||{member2}]"]
+    unc[f"Entr[{confident_predictor_name}]+MI[{member1}||{member2}]"]=unc[f"MI[{member1}||{member2}]"]+unc[f"Entr[{confident_predictor_name}]"]
     dictatorial_predictor_name = f"dictatorial({member1},{member2})"
     if not (dictatorial_predictor_name in predictor_categories["Dictatorial Duo"]):
         predictor_categories["Dictatorial Duo"].append(dictatorial_predictor_name)

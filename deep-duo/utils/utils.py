@@ -29,6 +29,9 @@ def calc_cross_entr_torch(P, Q, device):
 def calc_kl_torch(P, Q, device):
     return calc_cross_entr_torch(P,Q,device) - calc_entr_torch(P,device)
 
+def calc_mi_torch(P, Q, device):
+    return (calc_kl_torch(P, Q, device)+calc_kl_torch(Q, P, device))/2
+
 def softvote(pred1, pred2):
     res = (pred1+pred2)/2
     return res
@@ -200,16 +203,16 @@ def add_uncertainty_measures(category, model, unc_ls, unc_des_ls, main_model, se
         unc_des_ls.extend(["kl_ls"])
         unc_ls.append(f"Entr[{model}]+{kl_unc_ls}")
         unc_des_ls.append("entropy+kl(ls)")
-        # kl_unc_sl = f"KL[{sec_model}||{main_model}]"
-        # mi_unc = f"MI[{sec_model}||{main_model}]"
-        # unc_ls.extend([kl_unc_sl])
-        # unc_des_ls.extend(["kl_sl"])
-        # unc_ls.extend([mi_unc])
-        # unc_des_ls.extend(["mi"])
-        # unc_ls.append(f"Entr[{model}]+{kl_unc_sl}")
-        # unc_des_ls.append("entropy+kl(sl)")
-        # unc_ls.append(f"Entr[{model}]+{mi_unc}")
-        # unc_des_ls.append("entropy+mi")
+        kl_unc_sl = f"KL[{sec_model}||{main_model}]"
+        mi_unc = f"MI[{sec_model}||{main_model}]"
+        unc_ls.extend([kl_unc_sl])
+        unc_des_ls.extend(["kl_sl"])
+        unc_ls.extend([mi_unc])
+        unc_des_ls.extend(["mi"])
+        unc_ls.append(f"Entr[{model}]+{kl_unc_sl}")
+        unc_des_ls.append("entropy+kl(sl)")
+        unc_ls.append(f"Entr[{model}]+{mi_unc}")
+        unc_des_ls.append("entropy+mi")
     elif category == "Dictatorial Duo":
         entropy_unc = f"Entr[{main_model}]"
         softmax_unc = f"SR[{main_model}]"
@@ -220,6 +223,16 @@ def add_uncertainty_measures(category, model, unc_ls, unc_des_ls, main_model, se
         unc_des_ls.extend(["entropy", "softmax response"])
         unc_ls.append(f"Entr[{main_model}]+{kl_unc_ls}")
         unc_des_ls.append("entropy+kl(ls)")
+        kl_unc_sl = f"KL[{sec_model}||{main_model}]"
+        mi_unc = f"MI[{sec_model}||{main_model}]"
+        unc_ls.extend([kl_unc_sl])
+        unc_des_ls.extend(["kl_sl"])
+        unc_ls.extend([mi_unc])
+        unc_des_ls.extend(["mi"])
+        unc_ls.append(f"Entr[{main_model}]+{kl_unc_sl}")
+        unc_des_ls.append("entropy+kl(sl)")
+        unc_ls.append(f"Entr[{main_model}]+{mi_unc}")
+        unc_des_ls.append("entropy+mi")
     
     return unc_ls, unc_des_ls
 

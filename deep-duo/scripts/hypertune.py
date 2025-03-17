@@ -1,5 +1,4 @@
 # scripts/hypertune.py
-
 import argparse
 import os
 import sys
@@ -14,7 +13,49 @@ from sklearn.metrics import f1_score, accuracy_score
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.config import load_config
 from mf.model_factory import create_model
+import pandas as pd
 
+def save_results_csv(model_name, phase, learning_rate, weight_decay, batch_size, epoch, best_validation_metric, filename):
+    print(f"checking if saving hyperparams result to {filename}...")
+    file_exists = os.path.exists(filename)
+    
+    # Load existing CSV or create an empty DataFrame
+    if file_exists:
+        df = pd.read_csv(filename)
+    else:
+        df = pd.DataFrame(columns=["model_name", "phase", "learning_rate", "weight_decay", "batch_size", 
+                                   "num_epochs", "validation_metric"])
+
+    # Filter existing records for the same model & phase
+    mask = (df["model_name"] == model_name) & (df["phase"] == phase)
+
+    if mask.any():  # Check if this model-phase exists in CSV
+        prev_best_metric = df.loc[mask, "validation_metric"].max()
+        if best_validation_metric <= prev_best_metric:
+            print(f"Skipping saving for {model_name} ({phase}) as current metric is not better.")
+            return  # Do not save if new metric is not better
+
+        # Remove the old record since new one is better
+        df = df[~mask]
+
+    # Append new best result
+    new_entry = pd.DataFrame([{
+        "model_name": model_name,
+        "phase": phase,
+        "learning_rate": learning_rate,
+        "weight_decay": weight_decay,
+        "batch_size": batch_size,
+        "num_epochs": epoch,
+        "validation_metric": best_validation_metric
+    }])
+
+    df = pd.concat([df, new_entry], ignore_index=True)
+    print("hyperparams csv saved as")
+    print(df)
+    # Save back to CSV
+    df.to_csv(filename, index=False)
+    print(f"Updated {filename} with new best results.")
+                
 def train_model(config, num_classes, root_dir, dataset_name, device, model_state=None, finetune=False):
     import sys
     import os
@@ -45,6 +86,7 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
         print("All grad activated!")
     else:
         print("Linear Probing Phase:")
+    phase = "fully_finetuned" if finetune else "linear_probing"
         
     model = model.to(device)
 
@@ -65,7 +107,7 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
     # Set up criterion, optimizer, and scheduler
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
+    # scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
     trial_id = session.get_trial_id()
     checkpoint_dir = os.path.join(os.getcwd(), f"checkpoint_{trial_id}")
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -126,11 +168,9 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
         else:
             session.report(metrics)
 
-        # Update scheduler
-        scheduler.step()
 
 def main():
-    num_finetune_samples = 12
+    num_finetune_samples = 16
     num_lp_sample = 8
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Hyperparameter tuning script')
@@ -232,6 +272,22 @@ def main():
             checkpoint_data = torch.load(checkpoint_path)
             model_state = checkpoint_data['model_state_dict']
         
+        best_config_saved = best_trial.config
+        hyper_results_dir = f"hyperparams/{dataset_name}"
+        os.makedirs(hyper_results_dir, exist_ok=True)
+        hyper_csv_path = os.path.join(hyper_results_dir, "tuning_results.csv")
+        
+        save_results_csv(
+            model_name=best_config_saved["model_name"],
+            phase="linear_probing",
+            learning_rate=best_config_saved["learning_rate"],
+            weight_decay=best_config_saved["weight_decay"],
+            batch_size=best_config_saved["batch_size"],
+            epoch=best_config_saved["num_epochs"],
+            best_validation_metric=best_trial.last_result[validation_metric],
+            filename=hyper_csv_path
+        )
+
         best_model = create_model(model_name=best_trial.config['model_name'], num_classes=num_classes)
         best_model.load_state_dict(model_state)
         best_model.to(device)
@@ -288,6 +344,19 @@ def main():
         metric=validation_metric,
         mode='max'
     )
+    
+    best_config_saved = best_finetune_trial.config
+    save_results_csv(
+        model_name=best_config_saved["model_name"],
+        phase="fully_finetuned",
+        learning_rate=best_config_saved["learning_rate"],
+        weight_decay=best_config_saved["weight_decay"],
+        batch_size=best_config_saved["batch_size"],
+        epoch=best_config_saved["num_epochs"],
+        best_validation_metric=best_finetune_trial.last_result[validation_metric],
+        filename=hyper_csv_path
+    )
+
 
     
     with best_finetune_checkpoint.as_directory() as checkpoint_dir:

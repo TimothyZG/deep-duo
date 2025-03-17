@@ -16,8 +16,8 @@ source ~/mlenv/bin/activate
 # Prepare data
 export DATA_DIR=$SLURM_TMPDIR/data
 mkdir -p $DATA_DIR
-cp ILSVRC2012_img_val.tar $DATA_DIR
-cp ILSVRC2012_devkit_t12.tar.gz $DATA_DIR
+cp Data/ILSVRC2012_img_val.tar $DATA_DIR
+cp Data/ILSVRC2012_devkit_t12.tar.gz $DATA_DIR
 
 python deep-duo/scripts/pred_on_imagenet.py \
     --data_dir $DATA_DIR

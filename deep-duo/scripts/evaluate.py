@@ -74,7 +74,6 @@ def main():
         'dataset_name': dataset_name,
     })
     
-    model_name_mode = model_name+args.mode if args.mode!=None else model_name
     # Evaluate the model on in-distribution test set
     print("Evaluating on In-Distribution Test Set:")
     test_loss_ind, test_metric_ind = evaluate_model(
@@ -83,7 +82,7 @@ def main():
         criterion=criterion,
         device=device,
         dataset_name=dataset_name,
-        model_name=model_name_mode,
+        model_name=model_name,
         eval_type='ind'
     )
 
@@ -96,7 +95,7 @@ def main():
             criterion=criterion,
             device=device,
             dataset_name=dataset_name,
-            model_name=model_name_mode,
+            model_name=model_name,
             eval_type='ood'
         )
 

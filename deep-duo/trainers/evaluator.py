@@ -24,10 +24,13 @@ def evaluate_model(model, dataloader, criterion, device, dataset_name, model_nam
     all_logits = []
 
     # Create directory for saving results if it doesn't exist
-    pred_folder_path = f"./{dataset_name}"
+    if dataset_name=="iwildcam":
+        pred_folder_path = f"./{dataset_name}-{eval_type}"
+    else:
+        pred_folder_path = f"./{dataset_name}"
     if temp_scaled:
-        pred_folder_path = f"./{dataset_name}_tp"
-    target_folder_path = f"./{dataset_name}-target"
+        pred_folder_path = f"{pred_folder_path}_tp"
+    target_folder_path = pred_folder_path
     os.makedirs(pred_folder_path, exist_ok=True)
 
     with torch.no_grad():
@@ -64,7 +67,7 @@ def evaluate_model(model, dataloader, criterion, device, dataset_name, model_nam
     logits_df = pd.DataFrame(all_logits)  # Each row is a sample, each column is a class logit
 
     # Save logits and targets to separate CSV files with 'ind' or 'ood' in the file name
-    logits_csv_file_path = os.path.join(pred_folder_path, f"{model_name}_{eval_type}_logits.csv")
+    logits_csv_file_path = os.path.join(pred_folder_path, f"{model_name}_logits.csv")
     targets_csv_file_path = os.path.join(target_folder_path, f"{eval_type}_targets.csv")
 
     logits_df.to_csv(logits_csv_file_path, index=False)
