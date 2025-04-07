@@ -294,7 +294,7 @@ def main():
 
         # Save the best model
         os.makedirs('checkpoints', exist_ok=True)
-        model_save_path = f'checkpoints/best_lp_model_{model_name}_{dataset_name}.pth'
+        model_save_path = f'checkpoints/{dataset_name}/best_lp_model_{model_name}_{dataset_name}.pth'
         torch.save(best_model.state_dict(), model_save_path)
         print(f"Best lp model saved to '{model_save_path}'")
     
@@ -369,7 +369,7 @@ def main():
     best_finetune_model.to(device)
 
     # Save the best finetuned model
-    finetune_model_save_path = f'checkpoints/best_ff_model_{model_name}_{dataset_name}.pth'
+    finetune_model_save_path = f'checkpoints/{dataset_name}/best_ff_model_{model_name}_{dataset_name}.pth'
     torch.save(best_finetune_model.state_dict(), finetune_model_save_path)
     print(f"Best finetuned model saved to '{finetune_model_save_path}'")
 

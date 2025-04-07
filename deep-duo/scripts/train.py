@@ -96,7 +96,7 @@ def main(config, checkpoint_dir=None):
         'learning_rate': learning_rate,
         'weight_decay': weight_decay,
     })
-    checkpoint_dir=f'checkpoints/{model_name}'
+    checkpoint_dir=f'checkpoints/{dataset_name}/{model_name}'
     os.makedirs(checkpoint_dir, exist_ok=True)
     saver = Saver(checkpoint_dir)
 
@@ -118,8 +118,8 @@ def main(config, checkpoint_dir=None):
     trained_model, best_metric = trainer.train()
     
     # Save the trained model
-    torch.save(trained_model.state_dict(), f'checkpoints/trained_model_{model_name}_{dataset_name}.pth')
-    print(f"Trained model saved to 'checkpoints/trained_model_{model_name}_{dataset_name}.pth'")
+    torch.save(trained_model.state_dict(), f'checkpoints/{dataset_name}/trained_model_{model_name}_{dataset_name}.pth')
+    print(f"Trained model saved to 'checkpoints/{dataset_name}/trained_model_{model_name}_{dataset_name}.pth'")
 
     # Finish logging
     logger.finish()
