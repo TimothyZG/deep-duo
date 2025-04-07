@@ -82,108 +82,102 @@ def calibration(y, p_mean, num_bins=10):
 def get_rank(unc_pred):
     return unc_pred.rank(method='first')
 
-# Function to evaluate models and store metrics
-def evaluate_models(predictions, label, prefix, testtype, metrics_dict, category, num_classes):
-    for method in predictions:
-        pred_col_name = f"pred_{method}"
-        pred = pd.read_csv(f"{prefix}{testtype}_{method}.csv")
-        label = pd.concat([label,pd.DataFrame({pred_col_name: pred.idxmax(axis=1)})],axis=1)
-        label[pred_col_name] = label[pred_col_name].str.extract('(\d+)').astype(int)
-        
-        curr_acc = np.mean(label[pred_col_name]==label["target"])
-        curr_f1 = f1_score(label["target"], label[pred_col_name], average='macro')
-        curr_brier = brier_score(one_hot(np.array(label["target"]), num_classes), softmax(pred))
-        curr_ece, curr_mce = calibration(one_hot(np.array(label["target"]), num_classes), softmax(pred))
-        
-        # Store metrics
-        metrics_dict["Model"].append(method)
-        metrics_dict["Test Set"].append(testtype)
-        metrics_dict["Acc"].append(curr_acc)
-        metrics_dict["F1"].append(curr_f1)
-        metrics_dict["Brier"].append(curr_brier)
-        metrics_dict["ECE"].append(curr_ece)
-        metrics_dict["MCE"].append(curr_mce)
-        metrics_dict["Predictor Category"].append(category)
-    return metrics_dict
 
 # Function to calculate AUROC
-def calculate_auroc(pred_df, unc_df, pred_vec, target_vec, unc_vec):
-    is_correct = pred_df[pred_vec] != pred_df[target_vec]
-    fpr, tpr, _ = roc_curve(is_correct, unc_df)
+def calculate_auroc(pred_vec, unc_vec, target_vec):
+    is_correct = pred_vec != target_vec
+    fpr, tpr, _ = roc_curve(is_correct, unc_vec)
     roc_auc = auc(fpr, tpr)
     return roc_auc
 
 
-def calculate_f1_acc_cov_auc_and_sac(pred_df, unc, pred_vec, target_vec, unc_vec, cov_range, sac_targets=[0.7,0.8,0.9,0.95,0.98,0.99],sfc_targets=[0.4,0.5,0.6,0.7,0.8,0.9,0.95]):
-    """
-    Calculate Coverage AUC for F1-Score, Accuracy, and SAC for specified accuracy levels.
-    
-    Parameters:
-    - pred_df: DataFrame containing predictions and true targets.
-    - unc_df: DataFrame containing uncertainty values.
-    - pred_vec: Column name for predictions in pred_df.
-    - target_vec: Column name for target labels in pred_df.
-    - unc_vec: Column name for uncertainty in unc_df.
-    - cov_range: List of coverage percentages (e.g., [10, 20, 30, ...]).
-    - sac_targets: List of accuracy levels for SAC calculation (default: [0.95, 0.98]).
-    
-    Returns:
-    - A dictionary with F1-Cov AUC, Acc-Cov AUC, and SAC results for each target.
-    """
-    # Get rank based on uncertainty
-    rank = get_rank(unc)
-    
-    # Calculate coverage threshold values
-    coverage_ls = cov_range / 100 * pred_df.shape[0]
-    
-    # Initialize lists for metrics
-    f1_metrics = []
-    acc_metrics = []
-    sac_results = {f"SAC_{int(target * 100)}": None for target in sac_targets}  # Initialize SAC results with keys like "SAC_95"
-    sfc_results = {f"SFC_{target}": None for target in sfc_targets}  # Initialize SAC results with keys like "SAC_95"
-    pred_df = pred_df[[target_vec,pred_vec]]
-    # Loop through coverage thresholds
-    for cov in coverage_ls:
-        # Filter predictions within the coverage threshold
-        cov_pred = pred_df.loc[rank < cov]
-        if cov_pred.empty:
-            print(f"Empty DataFrame for coverage threshold: {cov}")
-            print(rank.head())
-            print(rank.min(), rank.max())
-            continue
-        
-        # Calculate F1 and Accuracy
-        f1=f1_score(cov_pred[target_vec], cov_pred[pred_vec], average='macro')
-        f1_metrics.append(f1)
-        accuracy = accuracy_score(cov_pred[target_vec], cov_pred[pred_vec])
-        acc_metrics.append(accuracy)
-        
-        # Check SAC for each accuracy target
-        for sac_target in sac_targets:
-            sac_key = f"SAC_{int(sac_target * 100)}"
-            if ((sac_results[sac_key] is None) or  (accuracy >= sac_target)):
-                sac_results[sac_key] = cov/pred_df.shape[0]*100
+def area_under_risk_coverage_curve(uncertainties: np.ndarray, correctnesses: np.ndarray, risk="error") -> float:
+    uncertainties = uncertainties.astype(np.float64)
+    correctnesses = correctnesses.astype(np.float64)
 
-         # Check SAC for each accuracy target
-        for sfc_target in sfc_targets:
-            sfc_key = f"SFC_{sfc_target}"
-            if ((sfc_results[sfc_key] is None) or (f1 >= sfc_target)):
-                sfc_results[sfc_key] = cov/pred_df.shape[0]*100
+    sorted_indices = np.argsort(uncertainties)
+    correctnesses = correctnesses[sorted_indices]
+    total_samples = len(uncertainties)
+
+    cumulative_incorrect = np.cumsum(1 - correctnesses)
+    indices = np.arange(1, total_samples + 1, dtype=np.float64)
+
+    if risk == "error":
+        aurc = np.sum(cumulative_incorrect / indices) / total_samples
+    elif risk == "f1":
+        cumulative_f1 = np.array([
+            f1_score(correctnesses[:i], np.ones(i)) if i > 0 else 0
+            for i in range(1, total_samples + 1)
+        ])
+        aurc = np.sum(1-cumulative_f1) / total_samples
+    else:
+        raise ValueError("Invalid risk type. Choose either 'error' or 'f1'.")
+    return float(aurc)
+
+def area_under_risk_coverage_vec(uncertainties: np.ndarray, correctnesses: np.ndarray, risk="error") -> float:
+    uncertainties = uncertainties.astype(np.float64)
+    correctnesses = correctnesses.astype(np.float64)
+
+    sorted_indices = np.argsort(uncertainties)
+    correctnesses = correctnesses[sorted_indices]
+    total_samples = len(uncertainties)
+
+    cumulative_incorrect = np.cumsum(1 - correctnesses)
+    indices = np.arange(1, total_samples + 1, dtype=np.float64)
     
-    # Calculate area under the curve for both metrics
-    # f1_cov_auc = np.sum(f1_metrics)
-    # acc_cov_auc = np.sum(acc_metrics)
-    f1_cov_auc = np.trapz(f1_metrics, dx=0.5)  # Integrate using trapezoidal rule
-    acc_cov_auc = np.trapz(acc_metrics, dx=0.5)
-    
-    # Combine results into a dictionary
+    if risk == "error":
+        return cumulative_incorrect / indices
+    elif risk == "f1":
+        cumulative_f1 = np.array([
+            f1_score(correctnesses[:i], np.ones(i)) if i > 0 else 0
+            for i in range(1, total_samples + 1)
+        ])
+        return 1 - cumulative_f1
+    else:
+        raise ValueError("Invalid risk type. Choose either 'error' or 'f1'.")
+
+
+def calculate_f1_acc_cov_auc_and_sac(pred_vec, unc_vec, target_vec, sac_targets=[0.9,0.95,0.98,0.99],sfc_targets=[0.8,0.9,0.95,0.98,0.99]):
+    start_index = 200 # to reduce noise in beginning of unc, according to https://github.com/bmucsanyi/untangle/blob/main/untangle/utils/metric.py
+    correctnesses = (pred_vec == target_vec).astype(np.float64).values
+    uncertainties = unc_vec.astype(np.float64)
+    cumulative_incorrect = area_under_risk_coverage_vec(uncertainties, correctnesses, risk="error")
+    #cumulative_f1_risk = area_under_risk_coverage_vec(uncertainties, correctnesses, risk="f1")
+    aurc_acc = np.mean(cumulative_incorrect)
+    #aurc_f1_risk = np.mean(cumulative_f1_risk)
+    aurc_f1_risk = 0
+    # Initialize SAC and SFC results
+    sac_results = {f"SAC_{int(target * 100)}": None for target in sac_targets}
+    sfc_results = {f"SFC_{sfc_target}": None for sfc_target in sfc_targets}
+    for acc_tar in sac_targets:
+        over_threshold = cumulative_incorrect > 1 - acc_tar
+        if np.all(over_threshold):
+            sac_results[f"SAC_{int(acc_tar * 100)}"] = 1
+        else:
+            coverage_for_accuracy_strict = np.argmax(over_threshold)/len(correctnesses)
+            coverage_for_accuracy_nonstrict = (
+                np.argmax((cumulative_incorrect[start_index:] >1-acc_tar))+ start_index)/len(correctnesses)
+            sac_results[f"SAC_{int(acc_tar * 100)}"] = coverage_for_accuracy_nonstrict if coverage_for_accuracy_nonstrict>start_index else coverage_for_accuracy_strict
+    for f1_tar in sfc_targets:
+        # WARNING!! THIS IS TEMPORARY TO MAKE COMPUTATION FASTER
+        # TODO: figure out a faster way to compute this
+        sfc_results[f"SFC_{f1_tar}"]=0
+        continue
+        # WARNING END
+        over_threshold = cumulative_f1_risk > 1 - f1_tar
+        if np.all(over_threshold):
+            sfc_results[f"SFC_{f1_tar}"] = 1
+        else:
+            coverage_for_f1_strict = np.argmax(over_threshold)/len(correctnesses)
+            coverage_for_f1_nonstrict = (
+                np.argmax((cumulative_f1_risk[start_index:] >1-f1_tar))+ start_index)/len(correctnesses)
+            sfc_results[f"SFC_{f1_tar}"] = coverage_for_f1_nonstrict if coverage_for_f1_nonstrict>start_index else coverage_for_f1_strict
     results = {
-        "f1_cov_auc": f1_cov_auc,
-        "acc_cov_auc": acc_cov_auc,
-        **sac_results,  # Merge SAC results into the dictionary
+        "f1_cov_auc": aurc_f1_risk,
+        "acc_cov_auc": aurc_acc,
+        **sac_results,
         **sfc_results
     }
-    
     return results
 
 
@@ -203,43 +197,47 @@ def add_uncertainty_measures(category, model, unc_ls, unc_des_ls, main_model, se
         unc_des_ls.extend(["kl_ls"])
         unc_ls.append(f"Entr[{model}]+{kl_unc_ls}")
         unc_des_ls.append("entropy+kl(ls)")
-        kl_unc_sl = f"KL[{sec_model}||{main_model}]"
-        mi_unc = f"MI[{sec_model}||{main_model}]"
-        unc_ls.extend([kl_unc_sl])
-        unc_des_ls.extend(["kl_sl"])
-        unc_ls.extend([mi_unc])
-        unc_des_ls.extend(["mi"])
-        unc_ls.append(f"Entr[{model}]+{kl_unc_sl}")
-        unc_des_ls.append("entropy+kl(sl)")
-        unc_ls.append(f"Entr[{model}]+{mi_unc}")
-        unc_des_ls.append("entropy+mi")
+        sr_main_unc = f"SR[{main_model}]"
+        unc_ls.append(sr_main_unc)
+        unc_des_ls.append("SR_main")
+        entropy_main_unc = f"Entr[{main_model}]"
+        unc_ls.append(entropy_main_unc)
+        unc_des_ls.append("Entr_main")
     elif category == "Dictatorial Duo":
         entropy_unc = f"Entr[{main_model}]"
         softmax_unc = f"SR[{main_model}]"
         unc_ls.extend([entropy_unc, softmax_unc])
+        unc_des_ls.extend(["entropy", "softmax response"])
         kl_unc_ls = f"KL[{main_model}||{sec_model}]"
         unc_ls.extend([kl_unc_ls])
         unc_des_ls.extend(["kl_ls"])
-        unc_des_ls.extend(["entropy", "softmax response"])
         unc_ls.append(f"Entr[{main_model}]+{kl_unc_ls}")
         unc_des_ls.append("entropy+kl(ls)")
-        kl_unc_sl = f"KL[{sec_model}||{main_model}]"
-        mi_unc = f"MI[{sec_model}||{main_model}]"
-        unc_ls.extend([kl_unc_sl])
-        unc_des_ls.extend(["kl_sl"])
-        unc_ls.extend([mi_unc])
-        unc_des_ls.extend(["mi"])
-        unc_ls.append(f"Entr[{main_model}]+{kl_unc_sl}")
-        unc_des_ls.append("entropy+kl(sl)")
-        unc_ls.append(f"Entr[{main_model}]+{mi_unc}")
-        unc_des_ls.append("entropy+mi")
+        sv_duo_model = model.replace("dictatorial","softvote")
+        sr_duo_unc = f"SR[{sv_duo_model}]"
+        unc_ls.append(sr_duo_unc)
+        unc_des_ls.append("SR_svduo")
+        entropy_duo_unc = f"Entr[{sv_duo_model}]"
+        unc_ls.append(entropy_duo_unc)
+        unc_des_ls.append("Entr_svduo")
+        
+        # kl_unc_sl = f"KL[{sec_model}||{main_model}]"
+        # mi_unc = f"MI[{sec_model}||{main_model}]"
+        # unc_ls.extend([kl_unc_sl])
+        # unc_des_ls.extend(["kl_sl"])
+        # unc_ls.extend([mi_unc])
+        # unc_des_ls.extend(["mi"])
+        # unc_ls.append(f"Entr[{main_model}]+{kl_unc_sl}")
+        # unc_des_ls.append("entropy+kl(sl)")
+        # unc_ls.append(f"Entr[{main_model}]+{mi_unc}")
+        # unc_des_ls.append("entropy+mi")
     
     return unc_ls, unc_des_ls
 
-def evaluate_metrics(pred, unc, model, target_vec, unc_quantifier, cov_range):
-    auroc = calculate_auroc(pred, unc, f"pred_{model}", target_vec, unc_quantifier)
+def evaluate_metrics(pred_vec, unc_vec, target_vec):
+    auroc = calculate_auroc(pred_vec, unc_vec, target_vec)
     cov_auc_and_sac = calculate_f1_acc_cov_auc_and_sac(
-        pred, unc, f"pred_{model}", target_vec, unc_quantifier, cov_range
+        pred_vec, unc_vec, target_vec
     )
     metrics = {
         "auroc": auroc,
@@ -271,6 +269,7 @@ def process_category_subprogress_bar(task, shared_data, target_col="targets"):
     unc = shared_data['unc']
     
     category_results = []
+    true_target = pred[target_col]
     for idx, model in enumerate(models):
         # Uncertainty measure definitions
         main_model = get_main_model(model) if category != "Single Model" else model
@@ -278,14 +277,15 @@ def process_category_subprogress_bar(task, shared_data, target_col="targets"):
         unc_ls, unc_des_ls = add_uncertainty_measures(
             category, model, [], [], main_model, sec_model
         )
-
+        pred_col_name = f"pred_{model}"
+        pred_vec = pred[pred_col_name]
         for unc_quantifier, unc_des in zip(unc_ls, unc_des_ls):
             # Evaluate metrics for (model, unc_quantifier)
-            unc_series = unc[unc_quantifier]
             if unc_quantifier not in unc.columns:
                 print(f"{unc_quantifier} is not in unc.")
                 print(f"Available columns are {unc.columns}")
-            metrics = evaluate_metrics(pred, unc_series, model, target_col, unc_quantifier, cov_range)
+            unc_series = unc[unc_quantifier]
+            metrics = evaluate_metrics(pred_vec, unc_series, true_target)
 
             # Create a row dict for the final DataFrame
             row = {

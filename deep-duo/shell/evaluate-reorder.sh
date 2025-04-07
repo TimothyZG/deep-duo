@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --mem=16G
 #SBATCH --nodes=1       
-#SBATCH --time=2:00:00       
+#SBATCH --time=4:00:00       
 #SBATCH --mail-user=<tiange.zhou@outlook.com>
 #SBATCH --mail-type=ALL
 #SBATCH --output=logs/evaluate_duo/evaluate-duo-%j.out

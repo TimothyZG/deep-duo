@@ -153,7 +153,7 @@ with open(f"{config.dataset}_predictor_categories.json", "r") as file:
 target_col="label"
 target = pd.read_csv(f"{config.target_dir}/targets.csv")
 point_target = target[target_col]
-metrics_dict = {"Predictor": [], "Acc": [], "F1": [], "Brier": [], "ECE": [],"ESCE":[], "MCE": [], "Predictor Category": [], "Main Model": [], "Secondary Model": []}
+metrics_dict = {"Predictor": [], "Acc": [], "F1": [], "Brier": [], "CP_Brier":[], "ECE": [],"ESCE":[], "MCE": [], "Predictor Category": [], "Main Model": [], "Secondary Model": []}
 
 ############ Evaluate duo predictors ##################
 for category, models in predictor_categories.items():
@@ -170,15 +170,18 @@ for category, models in predictor_categories.items():
             pred = pd.read_csv(f"{pred_dir_curr}/{model}_logits.csv")
         curr_point_pred = np.argmax(pred, 1)
         curr_sm_pred = utils.softmax(pred)
-        accuracy = np.mean(point_target == curr_point_pred)
+        curr_correctness = (point_target == curr_point_pred)
+        accuracy = np.mean(curr_correctness)
         f1 = f1_score(point_target, curr_point_pred, average='macro')
         curr_brier = utils.brier_score(utils.one_hot(np.array(point_target), num_class), curr_sm_pred)
+        curr_cp_brier = utils.brier_score(curr_correctness, np.max(curr_sm_pred,axis=1))
         curr_ece, curr_esce, curr_mce = utils.calibration(utils.one_hot(np.array(point_target), num_class), curr_sm_pred)
         
         metrics_dict["Predictor"].append(model)
         metrics_dict["Acc"].append(accuracy)
         metrics_dict["F1"].append(f1)
         metrics_dict["Brier"].append(curr_brier)
+        metrics_dict["CP_Brier"].append(curr_cp_brier)
         metrics_dict["ECE"].append(curr_ece)
         metrics_dict["ESCE"].append(curr_esce)
         metrics_dict["MCE"].append(curr_mce)

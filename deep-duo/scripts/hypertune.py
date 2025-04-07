@@ -299,7 +299,7 @@ def main():
         print(f"Best lp model saved to '{model_save_path}'")
     
     # Fully Finetune Phase
-    ###########===============##YumiYumi##############
+    ###########===============##YumiYumi#XiguaXigua#############
     
     finetune_config = {
         'model_name': model_name,
