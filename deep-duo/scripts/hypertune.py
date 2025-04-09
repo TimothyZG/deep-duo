@@ -170,7 +170,7 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
 
 
 def main():
-    num_finetune_samples = 16
+    num_finetune_samples = 12
     num_lp_sample = 8
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Hyperparameter tuning script')
@@ -178,6 +178,9 @@ def main():
     parser.add_argument('--dataset_name', type=str, required=True, help='Name of the dataset to use')
     parser.add_argument('--config_dir', type=str, default='deep-duo/configs', help='Directory of the configuration files')
     parser.add_argument('--skip_lp', type=bool, default=False, help='Directory of the configuration files')
+    parser.add_argument('--soup', type=bool, default=False, help='Is this training round for soup? soup trials all complete without early stopping.')
+    parser.add_argument('--init_pth', type=str, default=None, 
+                        help='Path to a .pth checkpoint to use if skipping linear probing.')
     args = parser.parse_args()
 
     # Load configurations
@@ -188,7 +191,6 @@ def main():
     training_config = load_config(training_config_path)
 
     model_name = args.model_name
-
     dataset_name = args.dataset_name
     dataset_params = next(
         (item for item in dataset_config['datasets'] if item['name'].lower() == dataset_name.lower()), None)
@@ -207,12 +209,17 @@ def main():
 
     # Device configuration
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+    
+    reporter = CLIReporter(
+        parameter_columns=['learning_rate', 'weight_decay'],
+        metric_columns=[validation_metric, 'training_iteration'],
+        max_report_frequency=900
+    )
+    ray.init(
+        runtime_env={"working_dir": os.path.dirname(os.path.dirname(os.path.abspath(__file__)))},
+        log_to_driver=False
+    )
     if (not args.skip_lp):
-        ray.init(
-            runtime_env={"working_dir": os.path.dirname(os.path.dirname(os.path.abspath(__file__)))},
-            log_to_driver=False
-        )
         
         config_lp = {
             'model_name': model_name,
@@ -229,12 +236,6 @@ def main():
             reduction_factor=3,
             metric=validation_metric,
             mode='max'
-        )
-
-        reporter = CLIReporter(
-            parameter_columns=['learning_rate', 'weight_decay'],
-            metric_columns=[validation_metric, 'training_iteration'],
-            max_report_frequency=900
         )
 
         result = tune.run(
@@ -297,7 +298,20 @@ def main():
         model_save_path = f'checkpoints/{dataset_name}/best_lp_model_{model_name}_{dataset_name}.pth'
         torch.save(best_model.state_dict(), model_save_path)
         print(f"Best lp model saved to '{model_save_path}'")
-    
+    else:
+        # Load best_lp weights
+        if args.init_pth is not None:
+            print(f"Skipping LP. Loading model state from {args.init_pth} ...")
+            loaded_state = torch.load(args.init_pth)
+            if isinstance(loaded_state, dict) and "model_state_dict" in loaded_state:
+                print("stored as v1")
+                model_state = loaded_state["model_state_dict"]
+            else:
+                print("stored as v2")
+                model_state = loaded_state
+        else:
+            print("Skipping LP and no init .pth provided. Will train from default initialization.")
+
     # Fully Finetune Phase
     ###########===============##YumiYumi#XiguaXigua#############
     
@@ -316,6 +330,7 @@ def main():
         metric=validation_metric,
         mode='max'
     )
+    scheduler_to_use = finetune_scheduler if not args.soup else None
     finetune_result = tune.run(
         tune.with_parameters(
             train_model,
@@ -329,12 +344,29 @@ def main():
         resources_per_trial={'cpu': num_workers, 'gpu': 1 if torch.cuda.is_available() else 0},
         config=finetune_config,
         num_samples=num_finetune_samples,
-        scheduler=finetune_scheduler,
+        scheduler=scheduler_to_use,
         progress_reporter=reporter,
         local_dir='ray_results',
         keep_checkpoints_num=1,
         fail_fast=False
     )
+    for i,trial in enumerate(finetune_result.trials):
+    # Get the best checkpoint for this particular trial
+        best_ckpt_for_trial = finetune_result.get_best_checkpoint(
+            trial=trial,
+            metric=validation_metric,
+            mode='max'
+        )
+        if not best_ckpt_for_trial:
+            continue
+        with best_ckpt_for_trial.as_directory() as checkpoint_dir:
+            ckpt_path = os.path.join(checkpoint_dir, "checkpoint.pt")
+            checkpoint_data = torch.load(ckpt_path)
+            model_state_dict = checkpoint_data["model_state_dict"]
+        trial_ckpt_path = f"checkpoints/{dataset_name}/{model_name}_trial_{i}.pth"
+        torch.save(model_state_dict, trial_ckpt_path)
+        print(f"Saved trial {i}'s best model to {trial_ckpt_path}")
+        
     best_finetune_trial = finetune_result.get_best_trial(validation_metric, 'max', 'last')
     print(f"Best finetune trial config: {best_finetune_trial.config}")
     print(f"Best finetune trial final validation metric: {best_finetune_trial.last_result[validation_metric]}")
