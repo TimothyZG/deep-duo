@@ -71,6 +71,7 @@ def evaluate_model(model, dataloader, criterion, device, dataset_name, model_nam
     targets_csv_file_path = os.path.join(target_folder_path, f"{eval_type}_targets.csv")
 
     logits_df.to_csv(logits_csv_file_path, index=False)
+    print(f"Prediction saved to {logits_csv_file_path}")
     
     if os.path.exists(targets_csv_file_path):
         print("Target Files already exists.")

@@ -1,12 +1,19 @@
 import torch.nn as nn
 from torchvision import models
+import torch.nn.functional as F
 
 def freeze_model_layers(model):
     """Helper function to freeze all parameters of a model."""
     for param in model.parameters():
         param.requires_grad = False
-
-def create_model(model_name, num_classes=0, freeze_layers=True, use_imagenet=False, get_transform=False, weight=None):
+        
+class AverageHeads(nn.Module):
+    def forward(self, x):
+        # x: [batch_size, m_head, num_classes]
+        x = F.softmax(x, dim=-1)          # Softmax per head
+        return x.mean(dim=1)  
+    
+def create_model(model_name, num_classes=0, freeze_layers=True, use_imagenet=False, get_transform=False, weight=None, m_head = 1):
     """
     Creates a model from torchvision with specified pretrained weights,
     optionally freezes all layers, and replaces the classifier/head
@@ -194,8 +201,16 @@ def create_model(model_name, num_classes=0, freeze_layers=True, use_imagenet=Fal
             freeze_model_layers(model)
         if not use_imagenet:
             in_features = model.head.in_features
-            model.head = nn.Linear(in_features, num_classes)
+            if m_head > 1:
+                model.head = nn.Sequential(
+                    nn.Linear(in_features, num_classes * m_head),
+                    nn.Unflatten(dim=1, unflattened_size=(m_head, num_classes)),
+                    AverageHeads()
+                )
+            else:
+                model.head = nn.Linear(in_features, num_classes)
         transform = models.Swin_V2_S_Weights.IMAGENET1K_V1.transforms()
+        
     # ---------------------------
     # Swin V2 Base
     # ---------------------------
@@ -205,7 +220,14 @@ def create_model(model_name, num_classes=0, freeze_layers=True, use_imagenet=Fal
             freeze_model_layers(model)
         if not use_imagenet:
             in_features = model.head.in_features
-            model.head = nn.Linear(in_features, num_classes)
+            if m_head > 1:
+                model.head = nn.Sequential(
+                    nn.Linear(in_features, num_classes * m_head),
+                    nn.Unflatten(dim=1, unflattened_size=(m_head, num_classes)),
+                    AverageHeads()
+                )
+            else:
+                model.head = nn.Linear(in_features, num_classes)
         transform = models.Swin_V2_B_Weights.IMAGENET1K_V1.transforms()
 
     # ---------------------------
@@ -242,7 +264,15 @@ def create_model(model_name, num_classes=0, freeze_layers=True, use_imagenet=Fal
             freeze_model_layers(model)
         if not use_imagenet:
             in_features = model.classifier[2].in_features
-            model.classifier[2] = nn.Linear(in_features, num_classes)
+            if m_head > 1:
+                model.classifier[2] = nn.Sequential(
+                    nn.Linear(in_features, num_classes * m_head),
+                    nn.Unflatten(dim=1, unflattened_size=(m_head, num_classes)),
+                    AverageHeads()
+                )
+            else:
+                model.classifier[2] = nn.Linear(in_features, num_classes)
+            
         transform = models.ConvNeXt_Base_Weights.IMAGENET1K_V1.transforms()
 
     # ---------------------------

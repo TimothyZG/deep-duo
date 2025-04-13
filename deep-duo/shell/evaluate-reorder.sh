@@ -11,6 +11,6 @@ module load scipy-stack/2023b
 source ~/mlenv/bin/activate
 
 #ImageNet,ImageNetV2, Caltech256, IwildCamIND, IwildCamOOD
-DATASET="IwildCamOOD"
+DATASET="Caltech256"
 echo "DATASET = $DATASET"
 python deep-duo/scripts/analyze_prediction_reorder.py --dataset $DATASET

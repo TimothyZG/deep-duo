@@ -18,8 +18,7 @@ import pandas as pd
 def save_results_csv(model_name, phase, learning_rate, weight_decay, batch_size, epoch, best_validation_metric, filename):
     print(f"checking if saving hyperparams result to {filename}...")
     file_exists = os.path.exists(filename)
-    
-    # Load existing CSV or create an empty DataFrame
+
     if file_exists:
         df = pd.read_csv(filename)
     else:
@@ -56,7 +55,7 @@ def save_results_csv(model_name, phase, learning_rate, weight_decay, batch_size,
     df.to_csv(filename, index=False)
     print(f"Updated {filename} with new best results.")
                 
-def train_model(config, num_classes, root_dir, dataset_name, device, model_state=None, finetune=False):
+def train_model(config, num_classes, root_dir, dataset_name, device, model_state=None, finetune=False, m_head=1):
     import sys
     import os
     import ray
@@ -73,7 +72,7 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
     num_workers = config['num_workers']
 
     # Create model
-    model = create_model(model_name=config['model_name'], num_classes=num_classes)
+    model = create_model(model_name=config['model_name'], num_classes=num_classes, m_head=m_head)
     
     if model_state:
         print("Using the model_state pass in as starting point")
@@ -170,19 +169,15 @@ def train_model(config, num_classes, root_dir, dataset_name, device, model_state
 
 
 def main():
-    num_finetune_samples = 12
-    num_lp_sample = 8
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Hyperparameter tuning script')
     parser.add_argument('--model_name', type=str, required=True, help='Name of the model to train')
+    parser.add_argument('--m_head', type=int, default=5, help='number of heads for shallow ens')
     parser.add_argument('--num_lp_sample', type=int, default=8, help='Name of the model to train')
-    parser.add_argument('--num_finetune_samples', type=int, default=12, help='Name of the model to train')
+    parser.add_argument('--num_finetune_samples', type=int, default=8, help='Name of the model to train')
     parser.add_argument('--dataset_name', type=str, required=True, help='Name of the dataset to use')
     parser.add_argument('--config_dir', type=str, default='deep-duo/configs', help='Directory of the configuration files')
     parser.add_argument('--skip_lp', type=bool, default=False, help='Directory of the configuration files')
-    parser.add_argument('--soup', type=bool, default=False, help='Is this training round for soup? soup trials all complete without early stopping.')
-    parser.add_argument('--init_pth', type=str, default=None, 
-                        help='Path to a .pth checkpoint to use if skipping linear probing.')
     args = parser.parse_args()
 
     # Load configurations
@@ -196,6 +191,7 @@ def main():
     dataset_name = args.dataset_name
     num_finetune_samples = args.num_finetune_samples
     num_lp_sample = args.num_lp_sample
+    m_head = args.m_head
     dataset_params = next(
         (item for item in dataset_config['datasets'] if item['name'].lower() == dataset_name.lower()), None)
     if not dataset_params:
@@ -226,99 +222,87 @@ def main():
     hyper_results_dir = f"hyperparams/{dataset_name}"
     os.makedirs(hyper_results_dir, exist_ok=True)
     hyper_csv_path = os.path.join(hyper_results_dir, "tuning_results.csv")
-    if (not args.skip_lp):
-        
-        config_lp = {
-            'model_name': model_name,
-            'learning_rate': tune.loguniform(1e-4, 1e-2),
-            'weight_decay': tune.loguniform(1e-7, 1e-4),
-            'batch_size': batch_size,
-            'num_epochs': num_epochs_lp,
-            'num_workers': num_workers,
-        }
-
-        scheduler = ASHAScheduler(
-            max_t=num_epochs_lp,
-            grace_period=2,
-            reduction_factor=3,
-            metric=validation_metric,
-            mode='max'
-        )
-
-        result = tune.run(
-            tune.with_parameters(
-                train_model,
-                num_classes=num_classes,
-                root_dir=root_dir,
-                dataset_name=dataset_name,
-                device=device
-            ),
-            resources_per_trial={'cpu': num_workers, 'gpu': 1 if torch.cuda.is_available() else 0},
-            config=config_lp,
-            num_samples=num_lp_sample,
-            scheduler=scheduler,
-            progress_reporter=reporter,
-            local_dir='ray_results',
-            keep_checkpoints_num=1,
-            fail_fast=False
-        )
-
-        best_trial = result.get_best_trial(validation_metric, 'max', 'last')
-        print(f"Best trial config: {best_trial.config}")
-        print(f"Best trial final validation metric: {best_trial.last_result[validation_metric]}")
-        
-
-        best_checkpoint = result.get_best_checkpoint(
-            trial=best_trial,
-            metric=validation_metric,
-            mode='max'
-        )
-        
-        # Access the checkpoint directory
-        with best_checkpoint.as_directory() as checkpoint_dir:
-            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pt")
-            checkpoint_data = torch.load(checkpoint_path)
-            model_state = checkpoint_data['model_state_dict']
-        
-        best_config_saved = best_trial.config
-        
-        save_results_csv(
-            model_name=best_config_saved["model_name"],
-            phase="linear_probing",
-            learning_rate=best_config_saved["learning_rate"],
-            weight_decay=best_config_saved["weight_decay"],
-            batch_size=best_config_saved["batch_size"],
-            epoch=best_config_saved["num_epochs"],
-            best_validation_metric=best_trial.last_result[validation_metric],
-            filename=hyper_csv_path
-        )
-
-        best_model = create_model(model_name=best_trial.config['model_name'], num_classes=num_classes)
-        best_model.load_state_dict(model_state)
-        best_model.to(device)
-
-        # Save the best model
-        os.makedirs('checkpoints', exist_ok=True)
-        model_save_path = f'checkpoints/{dataset_name}/best_lp_model_{model_name}_{dataset_name}.pth'
-        torch.save(best_model.state_dict(), model_save_path)
-        print(f"Best lp model saved to '{model_save_path}'")
-    else:
-        # Load best_lp weights
-        if args.init_pth is not None:
-            print(f"Skipping LP. Loading model state from {args.init_pth} ...")
-            loaded_state = torch.load(args.init_pth)
-            if isinstance(loaded_state, dict) and "model_state_dict" in loaded_state:
-                print("stored as v1")
-                model_state = loaded_state["model_state_dict"]
-            else:
-                print("stored as v2")
-                model_state = loaded_state
-        else:
-            print("Skipping LP and no init .pth provided. Will train from default initialization.")
-
-    # Fully Finetune Phase
-    ###########===============##YumiYumi#XiguaXigua#############
     
+    ## ==========Linear Probing===========
+
+    
+    config_lp = {
+        'model_name': model_name,
+        'learning_rate': tune.loguniform(1e-4, 1e-2),
+        'weight_decay': tune.loguniform(1e-7, 1e-4),
+        'batch_size': batch_size,
+        'num_epochs': num_epochs_lp,
+        'num_workers': num_workers,
+    }
+
+    scheduler = ASHAScheduler(
+        max_t=num_epochs_lp,
+        grace_period=2,
+        reduction_factor=3,
+        metric=validation_metric,
+        mode='max'
+    )
+
+    result = tune.run(
+        tune.with_parameters(
+            train_model,
+            num_classes=num_classes,
+            root_dir=root_dir,
+            dataset_name=dataset_name,
+            device=device,
+            m_head = m_head
+        ),
+        resources_per_trial={'cpu': num_workers, 'gpu': 1 if torch.cuda.is_available() else 0},
+        config=config_lp,
+        num_samples=num_lp_sample,
+        scheduler=scheduler,
+        progress_reporter=reporter,
+        local_dir='ray_results',
+        keep_checkpoints_num=1,
+        fail_fast=False
+    )
+
+    best_trial = result.get_best_trial(validation_metric, 'max', 'last')
+    print(f"Best trial config: {best_trial.config}")
+    print(f"Best trial final validation metric: {best_trial.last_result[validation_metric]}")
+    
+
+    best_checkpoint = result.get_best_checkpoint(
+        trial=best_trial,
+        metric=validation_metric,
+        mode='max'
+    )
+    
+    # Access the checkpoint directory
+    with best_checkpoint.as_directory() as checkpoint_dir:
+        checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pt")
+        checkpoint_data = torch.load(checkpoint_path)
+        model_state = checkpoint_data['model_state_dict']
+    
+    best_config_saved = best_trial.config
+    
+    save_results_csv(
+        model_name=best_config_saved["model_name"],
+        phase="shallow_ens",
+        learning_rate=best_config_saved["learning_rate"],
+        weight_decay=best_config_saved["weight_decay"],
+        batch_size=best_config_saved["batch_size"],
+        epoch=best_config_saved["num_epochs"],
+        best_validation_metric=best_trial.last_result[validation_metric],
+        filename=hyper_csv_path
+    )
+
+    best_model = create_model(model_name=best_trial.config['model_name'], num_classes=num_classes, m_head=m_head)
+    best_model.load_state_dict(model_state)
+    best_model.to(device)
+
+    # Save the best model
+    os.makedirs('checkpoints', exist_ok=True)
+    model_save_path = f'checkpoints/{dataset_name}/best_shallow{m_head}_ens_{model_name}_{dataset_name}.pth'
+    torch.save(best_model.state_dict(), model_save_path)
+    print(f"Best lp model saved to '{model_save_path}'")
+
+
     finetune_config = {
         'model_name': model_name,
         'learning_rate': tune.loguniform(1e-6, 1e-4),
@@ -334,7 +318,6 @@ def main():
         metric=validation_metric,
         mode='max'
     )
-    scheduler_to_use = finetune_scheduler if not args.soup else None
     finetune_result = tune.run(
         tune.with_parameters(
             train_model,
@@ -343,12 +326,13 @@ def main():
             dataset_name=dataset_name,
             device=device,
             model_state=model_state,
-            finetune=True
+            finetune=True,
+            m_head = m_head
         ),
         resources_per_trial={'cpu': num_workers, 'gpu': 1 if torch.cuda.is_available() else 0},
         config=finetune_config,
         num_samples=num_finetune_samples,
-        scheduler=scheduler_to_use,
+        scheduler=finetune_scheduler,
         progress_reporter=reporter,
         local_dir='ray_results',
         keep_checkpoints_num=1,
@@ -384,7 +368,7 @@ def main():
     best_config_saved = best_finetune_trial.config
     save_results_csv(
         model_name=best_config_saved["model_name"],
-        phase="fully_finetuned",
+        phase="shallow_ens_ff",
         learning_rate=best_config_saved["learning_rate"],
         weight_decay=best_config_saved["weight_decay"],
         batch_size=best_config_saved["batch_size"],
@@ -400,14 +384,15 @@ def main():
         checkpoint_data = torch.load(checkpoint_path)
         model_state = checkpoint_data['model_state_dict']
 
-    best_finetune_model = create_model(model_name=best_finetune_trial.config['model_name'], num_classes=num_classes)
+    best_finetune_model = create_model(model_name=best_finetune_trial.config['model_name'], num_classes=num_classes, m_head=m_head)
     best_finetune_model.load_state_dict(model_state)
     best_finetune_model.to(device)
 
     # Save the best finetuned model
-    finetune_model_save_path = f'checkpoints/{dataset_name}/best_ff_model_{model_name}_{dataset_name}.pth'
+    finetune_model_save_path = f'checkpoints/{dataset_name}/best_shallow{m_head}_ens_ff_{model_name}_{dataset_name}.pth'
     torch.save(best_finetune_model.state_dict(), finetune_model_save_path)
     print(f"Best finetuned model saved to '{finetune_model_save_path}'")
+
 
 
 if __name__ == '__main__':

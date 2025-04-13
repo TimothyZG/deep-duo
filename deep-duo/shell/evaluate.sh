@@ -12,6 +12,6 @@ source ~/mlenv/bin/activate
 
 #ImageNet, Caltech256, IwildCamIND, IwildCamOOD
 
-DATASET="IwildCamOOD"
+DATASET="Caltech256"
 echo "DATASET = $DATASET"
 python deep-duo/scripts/analyze_prediction.py --dataset $DATASET

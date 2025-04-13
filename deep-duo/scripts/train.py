@@ -119,7 +119,7 @@ def main(config, checkpoint_dir=None):
     
     # Save the trained model
     torch.save(trained_model.state_dict(), f'checkpoints/{dataset_name}/trained_model_{model_name}_{dataset_name}.pth')
-    print(f"Trained model saved to 'checkpoints/{dataset_name}/trained_model_{model_name}_{dataset_name}.pth'")
+    print(f"Trained model with {best_metric=} saved to 'checkpoints/{dataset_name}/trained_model_{model_name}_{dataset_name}.pth'")
 
     # Finish logging
     logger.finish()

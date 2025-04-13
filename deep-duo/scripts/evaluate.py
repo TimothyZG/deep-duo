@@ -17,6 +17,7 @@ def main():
     parser.add_argument('--checkpoint', type=str, required=True, help='Path to model checkpoint')
     parser.add_argument('--config_dir', type=str, default='deep-duo/config', help='Directory of the configuration files')
     parser.add_argument('--mode', type=str, default=None, help='lp, ft or none')
+    parser.add_argument('--m_head', type=int, default=1, help='number of heads for shallow ens')
     args = parser.parse_args()
 
     # Load configurations
@@ -28,6 +29,7 @@ def main():
     model_name = args.model_name
     # Get dataset-specific configurations
     dataset_name = args.dataset_name
+    m_head = args.m_head
     dataset_params = next((item for item in dataset_config['datasets'] if item['name'].lower() == dataset_name.lower()), None)
     if not dataset_params:
         raise ValueError(f"Dataset '{dataset_name}' not found in dataset_config.yaml")
@@ -42,7 +44,7 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Create model
-    model = create_model(model_name=model_name, num_classes=num_classes)
+    model = create_model(model_name=model_name, num_classes=num_classes,m_head=m_head)
     model = model.to(device)
 
     # Load the saved state dictionary

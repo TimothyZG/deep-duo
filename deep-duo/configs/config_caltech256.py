@@ -11,6 +11,6 @@ backbone_csv_path = f"backbones_selected.csv"
 target_dir = f"{dataset}"
 
 large_model_ls = ["convnext_base-IMAGENET1K_V1",
-                  "convnext_small-IMAGENET1K_V1",]
-                #   "swin_v2_s-IMAGENET1K_V1",
-                #   "swin_v2_b-IMAGENET1K_V1",]
+                  "convnext_small-IMAGENET1K_V1",#]
+                  "swin_v2_s-IMAGENET1K_V1",
+                  "swin_v2_b-IMAGENET1K_V1",]
